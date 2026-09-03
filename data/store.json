@@ -1,0 +1,38 @@
+{
+  "user": {
+    "id": "user_1",
+    "name": "",
+    "email": "",
+    "avatar": "",
+    "role": "",
+    "theme": "light",
+    "workStartHour": 8,
+    "workEndHour": 18,
+    "pomodoroMinutes": 25,
+    "shortBreakMinutes": 5,
+    "longBreakMinutes": 15,
+    "visibleWidgets": {
+      "todayTasks": true,
+      "overdueTasks": true,
+      "upcomingEvents": true,
+      "smartPriorities": true,
+      "habits": true,
+      "goals": true,
+      "metrics": true
+    }
+  },
+  "tasks": [],
+  "projects": [],
+  "events": [],
+  "goals": [],
+  "habits": [],
+  "notes": [],
+  "monthlyPlan": {
+    "month": "2026-09",
+    "objectives": [],
+    "finances": [],
+    "focusNotes": ""
+  },
+  "notifications": [],
+  "timeEntries": []
+}
