@@ -217,7 +217,7 @@ export const TaskModal: React.FC = () => {
               rows={3}
               value={task.description || ''}
               onChange={(e) => updateTask(task.id, { description: e.target.value })}
-              className="w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50/50 p-3 text-xs text-neutral-800 placeholder-neutral-400 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-neutral-800 dark:bg-neutral-800/40 dark:text-neutral-200 dark:focus:bg-neutral-900"
+              className="w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50/50 p-3 text-xs text-neutral-800 placeholder-neutral-400 focus:border-indigo-500 focus:outline-none dark:border-neutral-800 dark:bg-neutral-800/40 dark:text-neutral-200"
               placeholder="Adicione uma descrição detalhada, links ou notas de contexto..."
             />
           </div>
@@ -488,7 +488,7 @@ export const TaskModal: React.FC = () => {
                 value={newChecklistText}
                 onChange={(e) => setNewChecklistText(e.target.value)}
                 placeholder="+ Adicionar item ao checklist..."
-                className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs outline-none focus:border-indigo-500 focus:bg-white dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-100"
+                className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs outline-none focus:border-indigo-500 dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-100"
               />
               <button
                 type="submit"
@@ -539,7 +539,7 @@ export const TaskModal: React.FC = () => {
                 value={newSubtaskText}
                 onChange={(e) => setNewSubtaskText(e.target.value)}
                 placeholder="+ Adicionar subtarefa acionável..."
-                className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs outline-none focus:border-indigo-500 focus:bg-white dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-100"
+                className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs outline-none focus:border-indigo-500 dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-100"
               />
               <button
                 type="submit"
@@ -579,7 +579,7 @@ export const TaskModal: React.FC = () => {
                 value={newCommentText}
                 onChange={(e) => setNewCommentText(e.target.value)}
                 placeholder="Escreva um comentário ou atualização..."
-                className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs outline-none focus:border-indigo-500 focus:bg-white dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
+                className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs outline-none focus:border-indigo-500 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
               />
               <button
                 type="submit"

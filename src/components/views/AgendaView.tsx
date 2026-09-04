@@ -11,9 +11,13 @@ import {
   CheckCircle2,
   Sparkles,
   Timer,
+  Repeat,
+  FolderKanban,
+  Check,
 } from 'lucide-react';
 import { getTodayDateString, formatDatePT } from '../../utils/date';
 import { CalendarEvent } from '../../types';
+import { isRoutineScheduledForDate, isRoutineCompletedOnDate } from '../../utils/routineUtils';
 
 export const AgendaView: React.FC = () => {
   const {
@@ -22,6 +26,10 @@ export const AgendaView: React.FC = () => {
     addEvent,
     setSelectedTaskId,
     startFocusTimer,
+    allProjectRoutines,
+    toggleProjectRoutine,
+    setSelectedProjectId,
+    setActiveTab,
   } = useApp();
 
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
@@ -44,6 +52,10 @@ export const AgendaView: React.FC = () => {
   const dayEvents = events.filter((e) => e.startDate === selectedDate);
   // Tasks scheduled on selected day with dueTime
   const dayTasks = tasks.filter((t) => t.dueDate === selectedDate && !t.isInbox);
+  // Project routines scheduled on selected day
+  const dayProjectRoutines = allProjectRoutines.filter(
+    (r) => r.syncToCalendar !== false && isRoutineScheduledForDate(r, selectedDate)
+  );
 
   const handleSlotClick = (hour: number) => {
     const timeString = `${String(hour).padStart(2, '0')}:00`;
@@ -131,7 +143,7 @@ export const AgendaView: React.FC = () => {
             {formatDatePT(selectedDate, 'long')}
           </span>
           <p className="text-xs text-neutral-600 dark:text-neutral-300">
-            {dayEvents.length} compromissos agendados • {dayTasks.length} tarefas com prazo neste dia
+            {dayEvents.length} compromissos • {dayTasks.length} tarefas com prazo • {dayProjectRoutines.length} rotinas de projetos
           </p>
         </div>
 
@@ -147,6 +159,107 @@ export const AgendaView: React.FC = () => {
         </button>
       </div>
 
+      {/* Project Routines Card for Selected Day */}
+      {dayProjectRoutines.length > 0 && (
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-xs dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="flex items-center justify-between border-b border-neutral-100 pb-2.5 dark:border-neutral-800">
+            <div className="flex items-center gap-2">
+              <Repeat className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-800 dark:text-neutral-200">
+                Rotinas dos Projetos para este Dia ({dayProjectRoutines.length})
+              </h3>
+            </div>
+            <span className="text-[11px] text-neutral-400">Sincronizadas com a tag do projeto</span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+            {dayProjectRoutines.map((routine) => {
+              const isCompleted = isRoutineCompletedOnDate(routine, selectedDate);
+              return (
+                <div
+                  key={routine.id}
+                  className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
+                    isCompleted
+                      ? 'bg-neutral-50/70 border-neutral-200/70 text-neutral-400 dark:bg-neutral-800/30 dark:border-neutral-800'
+                      : 'bg-white border-neutral-200 hover:shadow-xs dark:bg-neutral-900 dark:border-neutral-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <button
+                      onClick={() => toggleProjectRoutine(routine.projectId, routine.id, selectedDate)}
+                      className="text-neutral-400 hover:text-emerald-500 transition-colors shrink-0"
+                      title={isCompleted ? 'Marcar como pendente hoje' : 'Marcar como concluído hoje'}
+                    >
+                      {isCompleted ? (
+                        <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                      ) : (
+                        <div className="h-5 w-5 rounded-full border border-neutral-300 dark:border-neutral-700 hover:border-emerald-500 transition-colors" />
+                      )}
+                    </button>
+
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedProjectId(routine.projectId);
+                            setActiveTab('projects');
+                          }}
+                          className="cursor-pointer rounded-md px-1.5 py-0.5 text-[10px] font-bold border hover:opacity-80 transition-opacity shrink-0"
+                          style={{
+                            backgroundColor: `${routine.projectColor}15`,
+                            borderColor: `${routine.projectColor}40`,
+                            color: routine.projectColor,
+                          }}
+                          title={`Abrir projeto ${routine.projectName}`}
+                        >
+                          {routine.projectName}
+                        </button>
+                        <span
+                          className={`text-xs font-semibold truncate ${
+                            isCompleted ? 'line-through text-neutral-400' : 'text-neutral-900 dark:text-neutral-100'
+                          }`}
+                        >
+                          {routine.title}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-neutral-400 mt-0.5">
+                        {routine.preferredTime && (
+                          <span className="flex items-center gap-0.5 font-mono">
+                            <Clock className="h-2.5 w-2.5" />
+                            {routine.preferredTime}
+                          </span>
+                        )}
+                        <span>
+                          {routine.frequency === 'daily'
+                            ? 'Diária'
+                            : routine.frequency === 'weekly'
+                            ? 'Semanal'
+                            : routine.frequency === 'biweekly'
+                            ? 'Quinzenal'
+                            : 'Mensal'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setSelectedProjectId(routine.projectId);
+                      setActiveTab('projects');
+                    }}
+                    className="p-1.5 text-neutral-400 hover:text-indigo-600 rounded-lg shrink-0"
+                    title="Ver no projeto"
+                  >
+                    <FolderKanban className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Time Blocking Hourly Timeline */}
       <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900 overflow-hidden">
         <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -156,6 +269,10 @@ export const AgendaView: React.FC = () => {
             const matchingTasks = dayTasks.filter(
               (t) => t.dueTime && t.dueTime.startsWith(timePrefix)
             );
+            const matchingRoutines = dayProjectRoutines.filter((r) => {
+              const prefTime = r.preferredTime || '09:00';
+              return prefTime.startsWith(timePrefix);
+            });
 
             return (
               <div
@@ -230,8 +347,81 @@ export const AgendaView: React.FC = () => {
                     </div>
                   ))}
 
+                  {/* Project Routines with Project Tag */}
+                  {matchingRoutines.map((routine) => {
+                    const isDone = isRoutineCompletedOnDate(routine, selectedDate);
+                    return (
+                      <div
+                        key={routine.id}
+                        className={`flex items-center justify-between rounded-xl border px-3 py-2 text-xs font-medium shadow-xs max-w-sm flex-1 transition-all ${
+                          isDone
+                            ? 'bg-neutral-50 text-neutral-400 line-through border-neutral-200 dark:bg-neutral-800/40 dark:border-neutral-800'
+                            : 'hover:shadow-xs'
+                        }`}
+                        style={
+                          !isDone
+                            ? {
+                                backgroundColor: `${routine.projectColor}12`,
+                                borderColor: `${routine.projectColor}45`,
+                                color: routine.projectColor,
+                              }
+                            : {}
+                        }
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleProjectRoutine(routine.projectId, routine.id, selectedDate);
+                            }}
+                            className="shrink-0 transition-colors"
+                            title={isDone ? 'Concluída hoje' : 'Marcar concluída'}
+                          >
+                            {isDone ? (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                            ) : (
+                              <Repeat className="h-4 w-4" />
+                            )}
+                          </button>
+                          <div className="truncate">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span
+                                className="rounded-md px-1.5 py-0.2 text-[9px] font-extrabold uppercase shrink-0 border"
+                                style={{
+                                  backgroundColor: `${routine.projectColor}25`,
+                                  borderColor: `${routine.projectColor}60`,
+                                  color: routine.projectColor,
+                                }}
+                              >
+                                {routine.projectName}
+                              </span>
+                              <span className="font-bold truncate text-neutral-900 dark:text-neutral-100">
+                                {routine.title}
+                              </span>
+                            </div>
+                            <p className="text-[10px] opacity-75 font-mono">
+                              {routine.preferredTime || '09:00'} • Rotina {routine.frequency === 'daily' ? 'Diária' : 'Periódica'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedProjectId(routine.projectId);
+                            setActiveTab('projects');
+                          }}
+                          className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10 shrink-0 opacity-80"
+                          title="Abrir no Projeto"
+                        >
+                          <FolderKanban className="h-3 w-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+
                   {/* Empty Slot Placeholder helper on hover */}
-                  {matchingEvents.length === 0 && matchingTasks.length === 0 && (
+                  {matchingEvents.length === 0 && matchingTasks.length === 0 && matchingRoutines.length === 0 && (
                     <button
                       onClick={() => handleSlotClick(hour)}
                       className="hidden group-hover:flex items-center gap-1 rounded-lg border border-dashed border-neutral-200 px-3 py-1 text-[11px] text-neutral-400 hover:border-indigo-400 hover:text-indigo-600 dark:border-neutral-800"
@@ -269,7 +459,7 @@ export const AgendaView: React.FC = () => {
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="Ex: Reunião de Alinhamento, Deep Work em Código..."
-                  className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 outline-none focus:border-indigo-500 focus:bg-white dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
+                  className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 outline-none focus:border-indigo-500 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
                 />
               </div>
 

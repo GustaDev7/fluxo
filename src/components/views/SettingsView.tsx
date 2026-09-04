@@ -171,7 +171,7 @@ export const SettingsView: React.FC = () => {
                   type="text"
                   value={nameInput}
                   onChange={(e) => setNameInput(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
+                  className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 focus:border-indigo-500 focus:outline-none dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
                   required
                 />
               </div>
@@ -184,7 +184,7 @@ export const SettingsView: React.FC = () => {
                   type="text"
                   value={roleInput}
                   onChange={(e) => setRoleInput(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
+                  className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 focus:border-indigo-500 focus:outline-none dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
                   placeholder="Ex: Empreendedor, Designer, Engenheiro..."
                 />
               </div>
@@ -198,7 +198,7 @@ export const SettingsView: React.FC = () => {
                 type="url"
                 value={avatarInput}
                 onChange={(e) => setAvatarInput(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
+                className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 focus:border-indigo-500 focus:outline-none dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
                 placeholder="https://images.unsplash.com/..."
               />
             </div>

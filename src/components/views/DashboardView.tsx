@@ -23,8 +23,10 @@ import {
   Calendar,
   Layers,
   BookOpen,
+  Repeat,
 } from 'lucide-react';
 import { Task } from '../../types';
+import { isRoutineScheduledForDate, isRoutineCompletedOnDate } from '../../utils/routineUtils';
 
 export const DashboardView: React.FC = () => {
   const {
@@ -34,6 +36,9 @@ export const DashboardView: React.FC = () => {
     events,
     habits,
     goals,
+    allProjectRoutines,
+    toggleProjectRoutine,
+    setSelectedProjectId,
     toggleHabitDay,
     updateTask,
     setSelectedTaskId,
@@ -64,6 +69,13 @@ export const DashboardView: React.FC = () => {
   );
   const activeProjects = projects.filter((p) => p.status === 'active');
   const todayEvents = events.filter((e) => e.startDate === todayStr);
+
+  const todayProjectRoutines = allProjectRoutines.filter((routine) =>
+    isRoutineScheduledForDate(routine, todayStr)
+  );
+  const completedTodayRoutines = todayProjectRoutines.filter((r) =>
+    isRoutineCompletedOnDate(r, todayStr)
+  );
 
   const totalPlannedMinutes = todayTasks.reduce((acc, t) => acc + (t.estimatedDuration || 30), 0);
   const totalExecutedMinutes = todayTasks.reduce((acc, t) => acc + (t.timeSpent || 0), 0);
@@ -100,7 +112,7 @@ export const DashboardView: React.FC = () => {
             </span>
           </div>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-neutral-900 dark:text-neutral-100 sm:text-3xl">
-            {getGreetingPT()}, {user.name.split(' ')[0]} 👋
+            {getGreetingPT()}{user?.name?.trim() ? `, ${user.name.trim().split(' ')[0]}` : ''} 👋
           </h1>
           <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
             Você tem <strong className="text-neutral-900 dark:text-neutral-100">{todayTasks.filter((t) => t.status !== 'done').length} tarefas</strong> e <strong className="text-neutral-900 dark:text-neutral-100">{todayEvents.length} compromissos</strong> agendados para hoje.
@@ -108,6 +120,15 @@ export const DashboardView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTab('assistant')}
+            className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-violet-50 px-3.5 py-2 text-xs font-semibold text-indigo-700 shadow-xs hover:from-indigo-100 hover:to-violet-100 dark:border-indigo-900/60 dark:from-indigo-950/40 dark:to-violet-950/40 dark:text-indigo-300"
+            title="Abrir Assistente de Voz com Gemini"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-indigo-600 animate-pulse" />
+            <span>Assistente IA & Voz</span>
+          </button>
+
           <button
             onClick={() => setActiveTab('guide')}
             className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-2 text-xs font-semibold text-indigo-700 shadow-xs hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
@@ -580,6 +601,94 @@ export const DashboardView: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Project Routines Widget */}
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+              <div className="flex items-center gap-2">
+                <Repeat className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                  Rotinas dos Projetos ({completedTodayRoutines.length}/{todayProjectRoutines.length})
+                </h2>
+              </div>
+              <button
+                onClick={() => setActiveTab('projects')}
+                className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+              >
+                <span>Ver Projetos</span>
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {todayProjectRoutines.length === 0 ? (
+                <p className="py-6 text-center text-xs text-neutral-400">
+                  Nenhuma rotina recorrente de projeto agendada para hoje.
+                </p>
+              ) : (
+                todayProjectRoutines.map((routine) => {
+                  const isDone = isRoutineCompletedOnDate(routine, todayStr);
+                  return (
+                    <div
+                      key={routine.id}
+                      className="flex items-center justify-between rounded-xl border border-neutral-100 bg-neutral-50/50 p-2.5 text-xs dark:border-neutral-800 dark:bg-neutral-800/30 transition-all"
+                    >
+                      <div className="flex items-center gap-2.5 truncate">
+                        <button
+                          onClick={() => toggleProjectRoutine(routine.projectId, routine.id, todayStr)}
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                            isDone
+                              ? 'bg-emerald-500 text-white'
+                              : 'border border-neutral-300 bg-white text-transparent hover:border-indigo-400 dark:border-neutral-700 dark:bg-neutral-800'
+                          }`}
+                          title={isDone ? 'Concluída hoje' : 'Marcar como concluída hoje'}
+                        >
+                          <Check className="h-3.5 w-3.5 stroke-[3]" />
+                        </button>
+                        <div className="truncate">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span
+                              className="rounded-md px-1.5 py-0.2 text-[9px] font-extrabold uppercase shrink-0 border"
+                              style={{
+                                backgroundColor: `${routine.projectColor}20`,
+                                borderColor: `${routine.projectColor}50`,
+                                color: routine.projectColor,
+                              }}
+                            >
+                              {routine.projectName}
+                            </span>
+                            <span
+                              className={`truncate font-semibold ${
+                                isDone
+                                  ? 'line-through text-neutral-400'
+                                  : 'text-neutral-800 dark:text-neutral-200'
+                              }`}
+                            >
+                              {routine.title}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-neutral-400 font-mono mt-0.5">
+                            {routine.preferredTime || 'Horário flexível'} • Rotina {routine.frequency === 'daily' ? 'Diária' : 'Periódica'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setSelectedProjectId(routine.projectId);
+                          setActiveTab('projects');
+                        }}
+                        className="p-1 text-neutral-400 hover:text-indigo-600 rounded-md shrink-0 transition-colors"
+                        title="Abrir no Projeto"
+                      >
+                        <FolderKanban className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

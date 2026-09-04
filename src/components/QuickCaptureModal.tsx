@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
+import { useFinance } from '../context/FinanceContext';
 import { parseQuickTask } from '../utils/smartParser';
+import { interpretLifeInput } from '../utils/lifeOSUtils';
 import { formatDatePT } from '../utils/date';
+import { formatBRL } from '../utils/financeUtils';
 import {
   Sparkles,
   Calendar,
@@ -14,6 +17,10 @@ import {
   Inbox,
   Check,
   Loader2,
+  DollarSign,
+  Target,
+  ArrowRight,
+  Zap,
 } from 'lucide-react';
 import { Priority } from '../types';
 
@@ -22,10 +29,17 @@ export const QuickCaptureModal: React.FC = () => {
     isQuickCaptureOpen,
     setIsQuickCaptureOpen,
     addTask,
+    addGoal,
+    addEvent,
     aiParseAndCreateTask,
     projects,
     isAiLoading,
   } = useApp();
+
+  const {
+    addTransaction,
+    addBill,
+  } = useFinance();
 
   const [input, setInput] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -44,14 +58,50 @@ export const QuickCaptureModal: React.FC = () => {
 
   if (!isQuickCaptureOpen) return null;
 
-  // Live heuristic preview
+  // Live heuristic multi-entity parser
   const liveParsed = parseQuickTask(input);
+  const lifeParsed = interpretLifeInput(input);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
 
-    if (useAi) {
+    // Check if input is specialized finance / goal / bill
+    if (lifeParsed.type === 'finance' && lifeParsed.transaction && addTransaction) {
+      addTransaction({
+        amount: lifeParsed.transaction.amount,
+        type: lifeParsed.transaction.type,
+        description: lifeParsed.transaction.description,
+        masterCategory: (lifeParsed.transaction.masterCategory as any) || 'conforto',
+        subcategory: lifeParsed.transaction.subcategory || 'Geral',
+        date: new Date().toISOString().slice(0, 10),
+      });
+    } else if (lifeParsed.type === 'bill' && lifeParsed.bill && addBill) {
+      addBill({
+        description: lifeParsed.bill.description,
+        amount: lifeParsed.bill.amount,
+        dueDate: lifeParsed.bill.dueDate,
+        category: 'Despesa Fixa',
+        isPaid: false,
+        priority: 'high',
+      });
+      // Also add a task so it shows in today's or target day's tasks
+      addTask({
+        title: `Pagar ${lifeParsed.bill.description} (${formatBRL(lifeParsed.bill.amount)})`,
+        dueDate: lifeParsed.bill.dueDate,
+        priority: 'high',
+        tags: ['finanças', 'contas'],
+      });
+    } else if (lifeParsed.type === 'goal' && lifeParsed.goal && addGoal) {
+      addGoal({
+        title: lifeParsed.goal.title,
+        targetValue: lifeParsed.goal.targetValue,
+        currentValue: 0,
+        deadline: lifeParsed.goal.deadline,
+        category: 'financeira',
+        status: 'in_progress',
+      });
+    } else if (useAi) {
       await aiParseAndCreateTask(input);
     } else {
       addTask({
@@ -91,9 +141,13 @@ export const QuickCaptureModal: React.FC = () => {
         <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3.5 dark:border-neutral-800">
           <div className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
-              <Plus className="h-4 w-4" />
+              <Zap className="h-4 w-4" />
             </span>
-            <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">Captura Rápida de Tarefa</h2>
+            <div>
+              <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                Captura Universal da Vida (Fluxo Life Ingest)
+              </h2>
+            </div>
           </div>
           <button
             onClick={() => setIsQuickCaptureOpen(false)}
@@ -111,8 +165,8 @@ export const QuickCaptureModal: React.FC = () => {
               rows={3}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder='Ex: "Enviar proposta para João amanhã às 14h prioridade alta #trabalho"'
-              className="w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50/70 p-3.5 text-sm text-neutral-900 placeholder-neutral-400 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-neutral-800 dark:bg-neutral-800/40 dark:text-neutral-100 dark:focus:border-indigo-500 dark:focus:bg-neutral-900"
+              placeholder='Digite qualquer coisa: "Gastei 42 no Uber", "Pagar faculdade dia 10", "Terminar o site sexta", "Comprar carro 30 mil"'
+              className="w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50/70 p-3.5 text-sm text-neutral-900 placeholder-neutral-400 focus:border-indigo-500 focus:outline-none dark:border-neutral-800 dark:bg-neutral-800/40 dark:text-neutral-100 dark:focus:border-indigo-500"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                   handleSubmit(e);
@@ -124,9 +178,30 @@ export const QuickCaptureModal: React.FC = () => {
           {/* Smart preview badges */}
           {input.trim() && (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-100 bg-neutral-50/80 p-3 text-xs dark:border-neutral-800 dark:bg-neutral-800/30">
-              <span className="text-[11px] font-semibold text-neutral-400">Detectado:</span>
+              <span className="text-[11px] font-semibold text-neutral-400">Interpretação:</span>
 
-              {liveParsed.dueDate && (
+              {lifeParsed.type === 'finance' && lifeParsed.transaction && (
+                <span className="flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                  <DollarSign className="h-3 w-3 text-emerald-600" />
+                  Transação: {formatBRL(lifeParsed.transaction.amount)} ({lifeParsed.transaction.description})
+                </span>
+              )}
+
+              {lifeParsed.type === 'bill' && lifeParsed.bill && (
+                <span className="flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                  <DollarSign className="h-3 w-3 text-amber-600" />
+                  Conta a Pagar: {formatBRL(lifeParsed.bill.amount)} (Venc. {formatDatePT(lifeParsed.bill.dueDate, 'relative')})
+                </span>
+              )}
+
+              {lifeParsed.type === 'goal' && lifeParsed.goal && (
+                <span className="flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 font-semibold text-purple-800 dark:border-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
+                  <Target className="h-3 w-3 text-purple-600" />
+                  Meta de Longo Prazo: {lifeParsed.goal.title} ({formatBRL(lifeParsed.goal.targetValue)})
+                </span>
+              )}
+
+              {liveParsed.dueDate && lifeParsed.type === 'task' && (
                 <span className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 font-medium text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
                   <Calendar className="h-3 w-3 text-indigo-500" />
                   {formatDatePT(liveParsed.dueDate, 'relative')}
@@ -150,15 +225,6 @@ export const QuickCaptureModal: React.FC = () => {
                   {priorityLabels[liveParsed.priority]}
                 </span>
               )}
-
-              {liveParsed.tags.map((t) => (
-                <span
-                  key={t}
-                  className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 font-medium text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
-                >
-                  <Tag className="h-3 w-3 text-neutral-400" />#{t}
-                </span>
-              ))}
             </div>
           )}
 
@@ -193,7 +259,7 @@ export const QuickCaptureModal: React.FC = () => {
                 }`}
               >
                 <Inbox className="h-3.5 w-3.5" />
-                <span>Salvar na Inbox</span>
+                <span>Inbox</span>
                 {saveToInbox && <Check className="h-3 w-3" />}
               </button>
 
@@ -235,7 +301,7 @@ export const QuickCaptureModal: React.FC = () => {
                 ) : (
                   <>
                     <Plus className="h-3.5 w-3.5" />
-                    <span>Adicionar Tarefa</span>
+                    <span>Processar & Ingerir</span>
                   </>
                 )}
               </button>
@@ -246,3 +312,4 @@ export const QuickCaptureModal: React.FC = () => {
     </div>
   );
 };
+

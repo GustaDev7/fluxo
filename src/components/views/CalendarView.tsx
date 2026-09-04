@@ -9,9 +9,12 @@ import {
   CheckCircle2,
   CalendarDays,
   Download,
+  Repeat,
+  FolderKanban,
 } from 'lucide-react';
 import { getMonthNamePT, getTodayDateString, formatDateToYYYYMMDD, formatDatePT } from '../../utils/date';
 import { downloadICS } from '../../utils/exportUtils';
+import { isRoutineScheduledForDate, isRoutineCompletedOnDate } from '../../utils/routineUtils';
 
 export const CalendarView: React.FC = () => {
   const {
@@ -20,11 +23,15 @@ export const CalendarView: React.FC = () => {
     addEvent,
     setSelectedTaskId,
     setIsQuickCaptureOpen,
+    allProjectRoutines,
+    toggleProjectRoutine,
+    setSelectedProjectId,
+    setActiveTab,
   } = useApp();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'agenda'>('month');
-  const [filterType, setFilterType] = useState<'all' | 'events' | 'tasks'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'events' | 'tasks' | 'routines'>('all');
   const [isNewEventModalOpen, setIsNewEventModalOpen] = useState(false);
   const [selectedDayForNewEvent, setSelectedDayForNewEvent] = useState(getTodayDateString());
   const [newTitle, setNewTitle] = useState('');
@@ -128,9 +135,10 @@ export const CalendarView: React.FC = () => {
             onChange={(e) => setFilterType(e.target.value as any)}
             className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
           >
-            <option value="all">Tudo (Eventos & Tarefas)</option>
+            <option value="all">Tudo (Eventos, Tarefas & Rotinas)</option>
             <option value="events">Apenas Compromissos</option>
             <option value="tasks">Apenas Tarefas</option>
+            <option value="routines">Apenas Rotinas de Projetos</option>
           </select>
 
           <button
@@ -225,14 +233,21 @@ export const CalendarView: React.FC = () => {
           <div className="grid grid-cols-7 divide-x divide-y divide-neutral-100 dark:divide-neutral-800">
             {calendarDays.map((day, idx) => {
               const dayEvents =
-                filterType !== 'tasks'
+                filterType === 'all' || filterType === 'events'
                   ? events.filter((e) => e.startDate === day.dateStr)
                   : [];
               const dayTasks =
-                filterType !== 'events'
+                filterType === 'all' || filterType === 'tasks'
                   ? tasks.filter((t) => t.dueDate === day.dateStr && !t.isInbox)
                   : [];
+              const dayRoutines =
+                filterType === 'all' || filterType === 'routines'
+                  ? allProjectRoutines.filter(
+                      (r) => r.syncToCalendar !== false && isRoutineScheduledForDate(r, day.dateStr)
+                    )
+                  : [];
               const isCurrentDay = day.dateStr === todayStr;
+              const totalItems = dayEvents.length + dayTasks.length + dayRoutines.length;
 
               return (
                 <div
@@ -301,9 +316,42 @@ export const CalendarView: React.FC = () => {
                       </div>
                     ))}
 
-                    {dayEvents.length + dayTasks.length > 4 && (
+                    {/* Project Routines with Project Tag */}
+                    {dayRoutines.slice(0, 2).map((routine) => {
+                      const isDone = isRoutineCompletedOnDate(routine, day.dateStr);
+                      return (
+                        <div
+                          key={routine.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleProjectRoutine(routine.projectId, routine.id, day.dateStr);
+                          }}
+                          className={`truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold border cursor-pointer transition-all flex items-center gap-1 ${
+                            isDone
+                              ? 'bg-neutral-100 text-neutral-400 line-through dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700'
+                              : 'hover:opacity-85'
+                          }`}
+                          style={
+                            !isDone
+                              ? {
+                                  backgroundColor: `${routine.projectColor}15`,
+                                  borderColor: `${routine.projectColor}45`,
+                                  color: routine.projectColor,
+                                }
+                              : {}
+                          }
+                          title={`[${routine.projectName}] ${routine.title} (${routine.frequency === 'daily' ? 'Diária' : 'Periódica'}${routine.preferredTime ? ` às ${routine.preferredTime}` : ''}) - Clique para alternar`}
+                        >
+                          <span className="shrink-0 font-bold opacity-80 text-[9px]">[{routine.projectName}]</span>
+                          <Repeat className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">{routine.title}</span>
+                        </div>
+                      );
+                    })}
+
+                    {totalItems > 3 && (
                       <div className="text-[9px] font-semibold text-neutral-400 pl-1">
-                        +{dayEvents.length + dayTasks.length - 4} mais
+                        +{totalItems - 3} mais
                       </div>
                     )}
                   </div>
@@ -318,27 +366,94 @@ export const CalendarView: React.FC = () => {
       {viewMode === 'agenda' && (
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100 mb-4">
-            Próximos Compromissos e Demandas Agendadas
+            Próximos Compromissos, Tarefas e Rotinas de Projetos
           </h3>
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-            {events.map((evt) => (
-              <div key={evt.id} className="flex items-center justify-between py-3 text-xs">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400">
-                    <Clock className="h-4 w-4" />
+            {/* Events */}
+            {(filterType === 'all' || filterType === 'events') &&
+              events.map((evt) => (
+                <div key={evt.id} className="flex items-center justify-between py-3 text-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400">
+                      <Clock className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-neutral-900 dark:text-neutral-100">{evt.title}</p>
+                      <p className="text-[11px] text-neutral-500">
+                        {formatDatePT(evt.startDate)} • {evt.startTime} às {evt.endTime}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-bold text-neutral-900 dark:text-neutral-100">{evt.title}</p>
-                    <p className="text-[11px] text-neutral-500">
-                      {formatDatePT(evt.startDate)} • {evt.startTime} às {evt.endTime}
-                    </p>
-                  </div>
+                  {evt.location && (
+                    <span className="text-[11px] text-neutral-400">{evt.location}</span>
+                  )}
                 </div>
-                {evt.location && (
-                  <span className="text-[11px] text-neutral-400">{evt.location}</span>
-                )}
-              </div>
-            ))}
+              ))}
+
+            {/* Project Routines */}
+            {(filterType === 'all' || filterType === 'routines') &&
+              allProjectRoutines.filter((r) => r.syncToCalendar !== false).map((routine) => {
+                const isDone = isRoutineCompletedOnDate(routine, todayStr);
+                return (
+                  <div key={routine.id} className="flex items-center justify-between py-3 text-xs">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => toggleProjectRoutine(routine.projectId, routine.id, todayStr)}
+                        className="flex h-8 w-8 items-center justify-center rounded-xl transition-colors shrink-0"
+                        style={{
+                          backgroundColor: `${routine.projectColor}20`,
+                          color: routine.projectColor,
+                        }}
+                        title={isDone ? 'Concluída hoje' : 'Marcar como concluída hoje'}
+                      >
+                        {isDone ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                        ) : (
+                          <Repeat className="h-4 w-4" />
+                        )}
+                      </button>
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className="rounded-md px-1.5 py-0.2 text-[9px] font-bold border shrink-0"
+                            style={{
+                              backgroundColor: `${routine.projectColor}15`,
+                              borderColor: `${routine.projectColor}40`,
+                              color: routine.projectColor,
+                            }}
+                          >
+                            {routine.projectName}
+                          </span>
+                          <p
+                            className={`font-bold ${
+                              isDone
+                                ? 'line-through text-neutral-400'
+                                : 'text-neutral-900 dark:text-neutral-100'
+                            }`}
+                          >
+                            {routine.title}
+                          </p>
+                        </div>
+                        <p className="text-[11px] text-neutral-500 mt-0.5">
+                          Rotina {routine.frequency === 'daily' ? 'Diária' : routine.frequency === 'weekly' ? 'Semanal' : routine.frequency === 'biweekly' ? 'Quinzenal' : 'Mensal'}
+                          {routine.preferredTime ? ` • ${routine.preferredTime}` : ''}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedProjectId(routine.projectId);
+                        setActiveTab('projects');
+                      }}
+                      className="p-1 text-neutral-400 hover:text-indigo-600 rounded-lg shrink-0"
+                      title="Abrir no Projeto"
+                    >
+                      <FolderKanban className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
           </div>
         </div>
       )}
@@ -365,7 +480,7 @@ export const CalendarView: React.FC = () => {
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="Ex: Reunião com cliente, Treino na academia..."
-                  className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 outline-none focus:border-indigo-500 focus:bg-white dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
+                  className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 outline-none focus:border-indigo-500 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
                 />
               </div>
 

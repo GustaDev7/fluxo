@@ -339,7 +339,7 @@ export const MonthlyPlanView: React.FC = () => {
           value={monthlyPlan.focusNotes}
           onChange={(e) => updateFocusNotes(e.target.value)}
           placeholder="Anote aqui reflexões sobre o mês: O que foi bem? O que precisa melhorar? Quais os principais marcos?"
-          className="w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50/60 p-3.5 text-xs text-neutral-800 outline-none focus:border-indigo-500 focus:bg-white dark:border-neutral-800 dark:bg-neutral-800/40 dark:text-neutral-200 dark:focus:bg-neutral-900 leading-relaxed"
+          className="w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50/60 p-3.5 text-xs text-neutral-800 outline-none focus:border-indigo-500 dark:border-neutral-800 dark:bg-neutral-800/40 dark:text-neutral-200 leading-relaxed"
         />
       </div>
     </div>

@@ -76,7 +76,34 @@ export interface KanbanColumn {
 }
 
 export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed';
-export type ProjectView = 'kanban' | 'list' | 'calendar' | 'timeline';
+export type ProjectView = 'workspace' | 'tasks' | 'kanban' | 'notes' | 'timeline';
+
+export interface ProjectRoutine {
+  id: string;
+  title: string;
+  frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly';
+  completed: boolean;
+  lastCompletedDate?: string;
+  preferredTime?: string; // e.g. "09:00"
+  syncToCalendar?: boolean; // defaults to true
+  syncToHabits?: boolean; // defaults to true
+  completedDates?: string[]; // array of YYYY-MM-DD
+  dayOfWeek?: number; // 0=Dom, 1=Seg, etc.
+  dayOfMonth?: number; // 1-31
+}
+
+export interface ProjectLink {
+  id: string;
+  title: string;
+  url: string;
+}
+
+export interface ProjectWorkLog {
+  id: string;
+  date: string;
+  content: string;
+  durationMinutes?: number;
+}
 
 export interface Project {
   id: string;
@@ -91,6 +118,11 @@ export interface Project {
   progress: number; // 0-100 calculated or manual
   members: string[];
   viewPreference?: ProjectView;
+  isRecurring?: boolean;
+  recurrenceFrequency?: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'continuous';
+  routines?: ProjectRoutine[];
+  links?: ProjectLink[];
+  workLogs?: ProjectWorkLog[];
 }
 
 export interface CalendarEvent {
@@ -227,6 +259,8 @@ export interface UserProfile {
   pomodoroMinutes: number; // e.g. 25
   shortBreakMinutes: number; // e.g. 5
   longBreakMinutes: number; // e.g. 15
+  proactivityLevel?: 'subtle' | 'balanced' | 'high';
+  aiMemoryEnabled?: boolean;
   visibleWidgets: {
     todayTasks: boolean;
     overdueTasks: boolean;
@@ -240,6 +274,10 @@ export interface UserProfile {
 
 export type ActiveNavTab =
   | 'dashboard'
+  | 'finance'
+  | 'whatsapp'
+  | 'lifegraph'
+  | 'assistant'
   | 'inbox'
   | 'tasks'
   | 'agenda'
@@ -253,3 +291,128 @@ export type ActiveNavTab =
   | 'focus'
   | 'guide'
   | 'settings';
+
+export interface AIExecutedAction {
+  id: string;
+  type:
+    | 'create_task'
+    | 'complete_task'
+    | 'delete_task'
+    | 'create_event'
+    | 'create_project'
+    | 'create_transaction'
+    | 'create_bill'
+    | 'create_goal'
+    | 'create_habit'
+    | 'update_memory'
+    | 'navigate';
+  status: 'executed' | 'failed';
+  summary: string;
+  data?: any;
+}
+
+export interface AIChatMessage {
+  id: string;
+  sender: 'user' | 'assistant';
+  text: string;
+  timestamp: string;
+  isVoice?: boolean;
+  actions?: AIExecutedAction[];
+  suggestedPrompts?: string[];
+  isSpeaking?: boolean;
+}
+
+export type MemoryCategory = 'finance' | 'routine' | 'preference' | 'goal' | 'project' | 'general';
+
+export interface UserMemoryItem {
+  id: string;
+  key: string;
+  value: string;
+  category: MemoryCategory;
+  confidence: number;
+  source: 'auto_inferred' | 'manual' | 'whatsapp';
+  createdAt: string;
+  lastUsedAt?: string;
+  isActive: boolean;
+}
+
+export interface WhatsAppMessage {
+  id: string;
+  sender: 'user' | 'bot';
+  text: string;
+  timestamp: string;
+  status: 'sent' | 'delivered' | 'read';
+  actionsExecuted?: AIExecutedAction[];
+  quickReplies?: string[];
+}
+
+export type LifeHorizon = 'today' | 'week' | 'month';
+
+export interface LifeHealthOverview {
+  score: number; // 0 - 100
+  title: string;
+  summary: string;
+  time: {
+    pendingTasksCount: number;
+    completedTodayCount: number;
+    plannedMinutes: number;
+    executedMinutes: number;
+    overdueCount: number;
+    status: 'optimal' | 'warning' | 'critical';
+  };
+  work: {
+    activeProjectsCount: number;
+    upcomingDeadlinesCount: number;
+    criticalProjectName?: string;
+    status: 'optimal' | 'warning' | 'critical';
+  };
+  finance: {
+    monthlyIncome: number;
+    monthlyExpenses: number;
+    savingsRatePercent: number;
+    pendingBillsTodayCount: number;
+    pendingBillsAmount: number;
+    status: 'optimal' | 'warning' | 'critical';
+  };
+  goals: {
+    primaryGoalTitle: string;
+    progressPercent: number;
+    activeGoalsCount: number;
+    status: 'optimal' | 'warning' | 'critical';
+  };
+  habits: {
+    currentStreak: number;
+    completedTodayPercent: number;
+    habitsCount: number;
+    status: 'optimal' | 'warning' | 'critical';
+  };
+  agenda: {
+    eventsTodayCount: number;
+    nextEventTitle?: string;
+    nextEventTime?: string;
+    status: 'optimal' | 'warning' | 'critical';
+  };
+  priorities: {
+    topItems: string[];
+    actionAdvice: string;
+  };
+}
+
+export interface LifeGraphNode {
+  id: string;
+  type: 'goal' | 'project' | 'budget' | 'task' | 'calendar' | 'finance' | 'networth';
+  label: string;
+  detail: string;
+  status?: string;
+  color: string;
+  linkTab: ActiveNavTab;
+  value?: string | number;
+}
+
+export interface LifeGraphEdge {
+  id: string;
+  fromId: string;
+  toId: string;
+  relationship: string;
+}
+

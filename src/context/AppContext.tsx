@@ -1,7 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Task,
   Project,
+  ProjectRoutine,
+  ProjectLink,
+  ProjectWorkLog,
   CalendarEvent,
   Goal,
   Habit,
@@ -15,7 +18,10 @@ import {
   TaskStatus,
   Priority,
   NoteBlock,
+  AIChatMessage,
+  AIExecutedAction,
 } from '../types';
+import { EnrichedProjectRoutine, getAllEnrichedProjectRoutines } from '../utils/routineUtils';
 import {
   DEFAULT_USER,
   DEFAULT_COLUMNS,
@@ -42,7 +48,9 @@ import { parseQuickTask } from '../utils/smartParser';
 
 interface ActiveTimer {
   taskId?: string;
+  projectId?: string;
   taskTitle: string;
+  projectTitle?: string;
   secondsRemaining: number;
   isRunning: boolean;
   totalSeconds: number;
@@ -86,6 +94,7 @@ interface AppContextType {
   timeEntries: TimeEntry[];
   activeTimer: ActiveTimer | null;
   isAiLoading: boolean;
+  allProjectRoutines: EnrichedProjectRoutine[];
 
   // Actions - Tasks
   addTask: (task: Partial<Task>) => Task;
@@ -101,6 +110,24 @@ interface AppContextType {
   addProject: (project: Partial<Project>) => Project;
   updateProject: (id: string, updates: Partial<Project>) => void;
   deleteProject: (id: string) => void;
+  addProjectRoutine: (
+    projectId: string,
+    title: string,
+    frequency?: 'daily' | 'weekly' | 'biweekly' | 'monthly',
+    preferredTime?: string,
+    syncToCalendar?: boolean,
+    syncToHabits?: boolean,
+    dayOfWeek?: number,
+    dayOfMonth?: number
+  ) => void;
+  toggleProjectRoutine: (projectId: string, routineId: string, dateStr?: string) => void;
+  resetProjectRoutines: (projectId: string) => void;
+  deleteProjectRoutine: (projectId: string, routineId: string) => void;
+  addProjectLink: (projectId: string, title: string, url: string) => void;
+  deleteProjectLink: (projectId: string, linkId: string) => void;
+  addProjectWorkLog: (projectId: string, content: string, durationMinutes?: number) => void;
+  deleteProjectWorkLog: (projectId: string, logId: string) => void;
+  startProjectFocusTimer: (projectId: string, durationMinutes?: number) => void;
 
   // Actions - Calendar Events
   addEvent: (event: Partial<CalendarEvent>) => CalendarEvent;
@@ -154,10 +181,16 @@ interface AppContextType {
   resetToSampleData: () => void;
   clearToCleanSlate: () => void;
 
-  // Actions - AI Assistant
+  // Actions - AI Assistant & Voice Chat
   aiParseAndCreateTask: (rawText: string) => Promise<Task>;
   aiBreakdownProjectTasks: (projectId: string) => Promise<Task[]>;
   aiGetSmartPriorities: () => Promise<{ topTaskIds: string[]; briefing: string; suggestions: string[] }>;
+  chatMessages: AIChatMessage[];
+  isAssistantOpen: boolean;
+  setIsAssistantOpen: (open: boolean) => void;
+  sendAssistantMessage: (text: string, isVoice?: boolean) => Promise<AIChatMessage>;
+  clearChatHistory: () => void;
+  executeAiAction: (action: { type: string; data: any }) => Promise<{ success: boolean; summary: string }>;
 
   // Database status & Real-time Sync
   isDbConnected: boolean;
@@ -168,19 +201,22 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// One-time cleanup for old mock data to guarantee a clean slate connected to database
-if (typeof window !== 'undefined' && !localStorage.getItem('cp_db_clean_init_v2')) {
-  localStorage.removeItem('cp_user');
-  localStorage.removeItem('cp_tasks');
-  localStorage.removeItem('cp_projects');
-  localStorage.removeItem('cp_events');
-  localStorage.removeItem('cp_goals');
-  localStorage.removeItem('cp_habits');
-  localStorage.removeItem('cp_notes');
-  localStorage.removeItem('cp_monthly');
-  localStorage.removeItem('cp_notifications');
-  localStorage.removeItem('cp_time_entries');
-  localStorage.setItem('cp_db_clean_init_v2', 'true');
+// Aggressive one-time purge for any previous sample data (Alexandre Mendes, task_1, etc.)
+if (typeof window !== 'undefined') {
+  const isPurged = localStorage.getItem('cp_db_clean_purged_v7');
+  if (!isPurged) {
+    localStorage.removeItem('cp_user');
+    localStorage.removeItem('cp_tasks');
+    localStorage.removeItem('cp_projects');
+    localStorage.removeItem('cp_events');
+    localStorage.removeItem('cp_goals');
+    localStorage.removeItem('cp_habits');
+    localStorage.removeItem('cp_notes');
+    localStorage.removeItem('cp_monthly');
+    localStorage.removeItem('cp_notifications');
+    localStorage.removeItem('cp_time_entries');
+    localStorage.setItem('cp_db_clean_purged_v7', 'true');
+  }
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -201,60 +237,159 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
-  // Entities state
+  // Entities state with strict sanitization (no sample data)
   const [user, setUser] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('cp_user');
-    return saved ? JSON.parse(saved) : DEFAULT_USER;
+    try {
+      const saved = localStorage.getItem('cp_user');
+      if (!saved) return DEFAULT_USER;
+      const parsed = JSON.parse(saved);
+      if (parsed.name === 'Alexandre Mendes' || parsed.email?.includes('empresa.com')) {
+        return DEFAULT_USER;
+      }
+      return parsed;
+    } catch {
+      return DEFAULT_USER;
+    }
   });
 
   const [columns] = useState<KanbanColumn[]>(DEFAULT_COLUMNS);
 
   const [tasks, setTasks] = useState<Task[]>(() => {
-    const saved = localStorage.getItem('cp_tasks');
-    return saved ? JSON.parse(saved) : DEFAULT_TASKS;
+    try {
+      const saved = localStorage.getItem('cp_tasks');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(
+        (t) => t && t.id !== 'task_1' && !t.title?.includes('Cliente Beta') && !t.title?.includes('Design System')
+      );
+    } catch {
+      return [];
+    }
   });
 
   const [projects, setProjects] = useState<Project[]>(() => {
-    const saved = localStorage.getItem('cp_projects');
-    return saved ? JSON.parse(saved) : DEFAULT_PROJECTS;
+    try {
+      const saved = localStorage.getItem('cp_projects');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((p) => p && p.id !== 'proj_1' && !p.name?.includes('Redesign'));
+    } catch {
+      return [];
+    }
   });
 
   const [events, setEvents] = useState<CalendarEvent[]>(() => {
-    const saved = localStorage.getItem('cp_events');
-    return saved ? JSON.parse(saved) : DEFAULT_EVENTS;
+    try {
+      const saved = localStorage.getItem('cp_events');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(
+        (e) => e && e.id !== 'evt_1' && !e.title?.includes('Daily do Time') && !e.title?.includes('Bloco de Foco')
+      );
+    } catch {
+      return [];
+    }
   });
 
   const [goals, setGoals] = useState<Goal[]>(() => {
-    const saved = localStorage.getItem('cp_goals');
-    return saved ? JSON.parse(saved) : DEFAULT_GOALS;
+    try {
+      const saved = localStorage.getItem('cp_goals');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed.filter((g) => g && g.id !== 'goal_1') : [];
+    } catch {
+      return [];
+    }
   });
 
   const [habits, setHabits] = useState<Habit[]>(() => {
-    const saved = localStorage.getItem('cp_habits');
-    return saved ? JSON.parse(saved) : DEFAULT_HABITS;
+    try {
+      const saved = localStorage.getItem('cp_habits');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed.filter((h) => h && h.id !== 'habit_1') : [];
+    } catch {
+      return [];
+    }
   });
 
   const [notes, setNotes] = useState<NotePage[]>(() => {
-    const saved = localStorage.getItem('cp_notes');
-    return saved ? JSON.parse(saved) : DEFAULT_NOTES;
+    try {
+      const saved = localStorage.getItem('cp_notes');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed.filter((n) => n && n.id !== 'note_1') : [];
+    } catch {
+      return [];
+    }
   });
 
   const [monthlyPlan, setMonthlyPlan] = useState<MonthlyPlan>(() => {
-    const saved = localStorage.getItem('cp_monthly');
-    return saved ? JSON.parse(saved) : DEFAULT_MONTHLY_PLAN;
+    try {
+      const saved = localStorage.getItem('cp_monthly');
+      return saved ? JSON.parse(saved) : DEFAULT_MONTHLY_PLAN;
+    } catch {
+      return DEFAULT_MONTHLY_PLAN;
+    }
   });
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    const saved = localStorage.getItem('cp_notifications');
-    return saved ? JSON.parse(saved) : DEFAULT_NOTIFICATIONS;
+    try {
+      const saved = localStorage.getItem('cp_notifications');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
 
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(() => {
-    const saved = localStorage.getItem('cp_time_entries');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('cp_time_entries');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
 
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
+
+  // Derived: All project routines with project tags & metadata
+  const allProjectRoutines = useMemo(() => getAllEnrichedProjectRoutines(projects), [projects]);
+
+  // AI Conversational Assistant & Voice state
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<AIChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('fluxo_ai_chat_history');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      {
+        id: 'msg_welcome',
+        sender: 'assistant',
+        text: 'Olá! Sou seu Copiloto de Produtividade com IA Gemini. Você pode falar comigo por voz ou escrever aqui para criar tarefas, agendar reuniões, estruturar projetos ou tirar dúvidas sobre sua rotina.',
+        timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        suggestedPrompts: [
+          '🎙️ Crie uma tarefa urgente para hoje',
+          '📅 Agende uma reunião com a equipe amanhã às 10h',
+          '📋 O que eu tenho pendente para hoje?',
+          '🚀 Crie um projeto chamado Lançamento Beta',
+        ],
+      },
+    ];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fluxo_ai_chat_history', JSON.stringify(chatMessages.slice(-50)));
+    } catch {}
+  }, [chatMessages]);
 
   const isDarkMode =
     user.theme === 'dark' ||
@@ -287,19 +422,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [user.theme]);
 
-  // Load from backend storage on mount if available
+  // Load from backend storage on mount if available (with mock data filter)
   useEffect(() => {
     fetch('/api/data')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data) {
-          if (data.user) setUser(data.user);
-          if (Array.isArray(data.tasks)) setTasks(data.tasks);
-          if (Array.isArray(data.projects)) setProjects(data.projects);
-          if (Array.isArray(data.events)) setEvents(data.events);
-          if (Array.isArray(data.goals)) setGoals(data.goals);
-          if (Array.isArray(data.habits)) setHabits(data.habits);
-          if (Array.isArray(data.notes)) setNotes(data.notes);
+          if (data.user && data.user.name !== 'Alexandre Mendes') setUser(data.user);
+          if (Array.isArray(data.tasks)) {
+            const clean = data.tasks.filter(
+              (t: any) => t && t.id !== 'task_1' && !t.title?.includes('Cliente Beta')
+            );
+            setTasks(clean);
+          }
+          if (Array.isArray(data.projects)) {
+            const clean = data.projects.filter(
+              (p: any) => p && p.id !== 'proj_1' && !p.name?.includes('Redesign')
+            );
+            setProjects(clean);
+          }
+          if (Array.isArray(data.events)) {
+            const clean = data.events.filter(
+              (e: any) => e && e.id !== 'evt_1' && !e.title?.includes('Daily do Time')
+            );
+            setEvents(clean);
+          }
+          if (Array.isArray(data.goals)) {
+            setGoals(data.goals.filter((g: any) => g && g.id !== 'goal_1'));
+          }
+          if (Array.isArray(data.habits)) {
+            setHabits(data.habits.filter((h: any) => h && h.id !== 'habit_1'));
+          }
+          if (Array.isArray(data.notes)) {
+            setNotes(data.notes.filter((n: any) => n && n.id !== 'note_1'));
+          }
           if (data.monthlyPlan) setMonthlyPlan(data.monthlyPlan);
           if (Array.isArray(data.notifications)) setNotifications(data.notifications);
           if (Array.isArray(data.timeEntries)) setTimeEntries(data.timeEntries);
@@ -374,13 +530,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!prev) return null;
         if (prev.secondsRemaining <= 1) {
           // Timer finished
-          if (prev.taskId) {
+          if (prev.taskId || prev.projectId) {
             const minutesElapsed = Math.round(prev.totalSeconds / 60);
             // Log time entry
             const newEntry: TimeEntry = {
               id: `time_${Date.now()}`,
               taskId: prev.taskId,
+              projectId: prev.projectId,
               taskTitle: prev.taskTitle,
+              projectTitle: prev.projectTitle,
               startTime: new Date(Date.now() - prev.totalSeconds * 1000).toISOString(),
               endTime: new Date().toISOString(),
               durationMinutes: minutesElapsed,
@@ -388,10 +546,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             };
             setTimeEntries((entries) => [newEntry, ...entries]);
 
-            // Add timeSpent to task
-            setTasks((curr) =>
-              curr.map((t) => (t.id === prev.taskId ? { ...t, timeSpent: (t.timeSpent || 0) + minutesElapsed } : t))
-            );
+            // Add timeSpent to task if task exists
+            if (prev.taskId) {
+              setTasks((curr) =>
+                curr.map((t) => (t.id === prev.taskId ? { ...t, timeSpent: (t.timeSpent || 0) + minutesElapsed } : t))
+              );
+            }
+
+            // If project is set, record work log on project
+            if (prev.projectId) {
+              const projectLog: ProjectWorkLog = {
+                id: `log_${Date.now()}`,
+                date: new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }),
+                content: `Sessão de foco concluída (${minutesElapsed} min).`,
+                durationMinutes: minutesElapsed,
+              };
+              setProjects((curr) =>
+                curr.map((p) => (p.id === prev.projectId ? { ...p, workLogs: [projectLog, ...(p.workLogs || [])] } : p))
+              );
+            }
           }
 
           // Add notification
@@ -621,13 +794,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       description: projData.description || '',
       color: projData.color || '#3b82f6',
       icon: projData.icon || 'Folder',
-      status: projData.status || 'planning',
+      status: projData.status || 'active',
       priority: projData.priority || 'medium',
       startDate: projData.startDate || getTodayDateString(),
       dueDate: projData.dueDate,
       progress: 0,
       members: projData.members || [user.name],
-      viewPreference: projData.viewPreference || 'kanban',
+      viewPreference: projData.viewPreference || 'workspace',
+      isRecurring: projData.isRecurring ?? false,
+      recurrenceFrequency: projData.recurrenceFrequency || (projData.isRecurring ? 'weekly' : undefined),
+      routines: projData.routines || [],
+      links: projData.links || [],
+      workLogs: projData.workLogs || [],
     };
     setProjects((prev) => [newProj, ...prev]);
     return newProj;
@@ -641,6 +819,142 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProjects((prev) => prev.filter((p) => p.id !== id));
     if (selectedProjectId === id) setSelectedProjectId(null);
   }, [selectedProjectId]);
+
+  const addProjectRoutine = useCallback(
+    (
+      projectId: string,
+      title: string,
+      frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' = 'daily',
+      preferredTime = '09:00',
+      syncToCalendar = true,
+      syncToHabits = true,
+      dayOfWeek?: number,
+      dayOfMonth?: number
+    ) => {
+      if (!title.trim()) return;
+      const newRoutine: ProjectRoutine = {
+        id: `rout_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        title: title.trim(),
+        frequency,
+        completed: false,
+        preferredTime,
+        syncToCalendar,
+        syncToHabits,
+        completedDates: [],
+        dayOfWeek,
+        dayOfMonth,
+      };
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId ? { ...p, routines: [...(p.routines || []), newRoutine] } : p))
+      );
+    },
+    []
+  );
+
+  const toggleProjectRoutine = useCallback((projectId: string, routineId: string, dateStr = getTodayDateString()) => {
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== projectId) return p;
+        const updated = (p.routines || []).map((r) => {
+          if (r.id === routineId) {
+            const currentCompletedDates = r.completedDates || [];
+            const isDoneOnDate = currentCompletedDates.includes(dateStr);
+            const nextCompletedDates = isDoneOnDate
+              ? currentCompletedDates.filter((d) => d !== dateStr)
+              : [...currentCompletedDates, dateStr];
+
+            const isToday = dateStr === getTodayDateString();
+            const nextCompleted = isToday ? !isDoneOnDate : r.completed;
+
+            return {
+              ...r,
+              completed: nextCompleted,
+              lastCompletedDate: !isDoneOnDate ? dateStr : r.lastCompletedDate,
+              completedDates: nextCompletedDates,
+            };
+          }
+          return r;
+        });
+        return { ...p, routines: updated };
+      })
+    );
+  }, []);
+
+  const resetProjectRoutines = useCallback((projectId: string) => {
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== projectId) return p;
+        const resetList = (p.routines || []).map((r) => ({ ...r, completed: false }));
+        return { ...p, routines: resetList };
+      })
+    );
+  }, []);
+
+  const deleteProjectRoutine = useCallback((projectId: string, routineId: string) => {
+    setProjects((prev) =>
+      prev.map((p) => (p.id === projectId ? { ...p, routines: (p.routines || []).filter((r) => r.id !== routineId) } : p))
+    );
+  }, []);
+
+  const addProjectLink = useCallback((projectId: string, title: string, url: string) => {
+    if (!title.trim() || !url.trim()) return;
+    let formattedUrl = url.trim();
+    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+      formattedUrl = `https://${formattedUrl}`;
+    }
+    const newLink: ProjectLink = {
+      id: `link_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      title: title.trim(),
+      url: formattedUrl,
+    };
+    setProjects((prev) =>
+      prev.map((p) => (p.id === projectId ? { ...p, links: [...(p.links || []), newLink] } : p))
+    );
+  }, []);
+
+  const deleteProjectLink = useCallback((projectId: string, linkId: string) => {
+    setProjects((prev) =>
+      prev.map((p) => (p.id === projectId ? { ...p, links: (p.links || []).filter((l) => l.id !== linkId) } : p))
+    );
+  }, []);
+
+  const addProjectWorkLog = useCallback((projectId: string, content: string, durationMinutes?: number) => {
+    if (!content.trim()) return;
+    const newLog: ProjectWorkLog = {
+      id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      date: new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }),
+      content: content.trim(),
+      durationMinutes,
+    };
+    setProjects((prev) =>
+      prev.map((p) => (p.id === projectId ? { ...p, workLogs: [newLog, ...(p.workLogs || [])] } : p))
+    );
+  }, []);
+
+  const deleteProjectWorkLog = useCallback((projectId: string, logId: string) => {
+    setProjects((prev) =>
+      prev.map((p) => (p.id === projectId ? { ...p, workLogs: (p.workLogs || []).filter((l) => l.id !== logId) } : p))
+    );
+  }, []);
+
+  const startProjectFocusTimer = useCallback(
+    (projectId: string, durationMinutes = 25) => {
+      const proj = projects.find((p) => p.id === projectId);
+      const title = proj ? proj.name : 'Projeto';
+      const seconds = durationMinutes * 60;
+      setActiveTimer({
+        projectId,
+        taskTitle: `Projeto: ${title}`,
+        projectTitle: title,
+        secondsRemaining: seconds,
+        isRunning: true,
+        totalSeconds: seconds,
+        mode: 'focus',
+      });
+      setActiveTab('focus');
+    },
+    [projects]
+  );
 
   // ================= EVENT ACTIONS =================
 
@@ -1234,6 +1548,214 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [tasks]);
 
+  const executeAiAction = useCallback(
+    async (action: { type: string; data: any }): Promise<{ success: boolean; summary: string }> => {
+      try {
+        switch (action.type) {
+          case 'create_task': {
+            const data = action.data || {};
+            // If project specified by name, find or link it
+            let targetProjectId = data.projectId;
+            if (!targetProjectId && data.projectName) {
+              const matchedProj = projects.find(
+                (p) => p.name.toLowerCase() === String(data.projectName).toLowerCase()
+              );
+              if (matchedProj) targetProjectId = matchedProj.id;
+            }
+
+            const t = addTask({
+              title: data.title || 'Nova Tarefa',
+              description: data.description,
+              dueDate: data.dueDate,
+              dueTime: data.dueTime,
+              priority: data.priority || 'medium',
+              tags: Array.isArray(data.tags) ? data.tags : [],
+              projectId: targetProjectId,
+              isInbox: false,
+            });
+
+            return {
+              success: true,
+              summary: `Tarefa "${t.title}" criada com sucesso!${t.dueDate ? ` Vence em ${t.dueDate}` : ''}${
+                t.dueTime ? ` às ${t.dueTime}` : ''
+              }.`,
+            };
+          }
+
+          case 'complete_task': {
+            const target = String(action.data?.taskTitleOrId || '').toLowerCase().trim();
+            const found = tasks.find(
+              (t) => t.id === target || t.title.toLowerCase().includes(target)
+            );
+            if (found) {
+              updateTask(found.id, { status: 'done' });
+              return { success: true, summary: `Tarefa "${found.title}" concluída!` };
+            }
+            return {
+              success: false,
+              summary: `Não localizei a tarefa "${action.data?.taskTitleOrId}" para concluir.`,
+            };
+          }
+
+          case 'delete_task': {
+            const target = String(action.data?.taskTitleOrId || '').toLowerCase().trim();
+            const found = tasks.find(
+              (t) => t.id === target || t.title.toLowerCase().includes(target)
+            );
+            if (found) {
+              deleteTask(found.id);
+              return { success: true, summary: `Tarefa "${found.title}" foi excluída.` };
+            }
+            return {
+              success: false,
+              summary: `Não localizei a tarefa "${action.data?.taskTitleOrId}" para excluir.`,
+            };
+          }
+
+          case 'create_event': {
+            const data = action.data || {};
+            const ev = addEvent({
+              title: data.title || 'Novo Compromisso',
+              startDate: data.startDate || getTodayDateString(),
+              startTime: data.startTime || '09:00',
+              endDate: data.endDate || data.startDate || getTodayDateString(),
+              endTime: data.endTime || '10:00',
+              location: data.location,
+              description: data.description,
+            });
+            return {
+              success: true,
+              summary: `Compromisso "${ev.title}" agendado para ${ev.startDate} às ${ev.startTime}.`,
+            };
+          }
+
+          case 'create_project': {
+            const data = action.data || {};
+            const p = addProject({
+              name: data.name || 'Novo Projeto',
+              description: data.description,
+              color: data.color || '#3b82f6',
+              priority: data.priority || 'medium',
+            });
+            return {
+              success: true,
+              summary: `Projeto "${p.name}" criado com sucesso!`,
+            };
+          }
+
+          case 'navigate': {
+            const tab = action.data?.tab;
+            if (tab) {
+              setActiveTab(tab as ActiveNavTab);
+              return { success: true, summary: `Navegando para ${tab}.` };
+            }
+            return { success: false, summary: 'Destino não fornecido.' };
+          }
+
+          default:
+            return { success: false, summary: `Ação desconhecida: ${action.type}` };
+        }
+      } catch (err: any) {
+        return { success: false, summary: `Erro na execução: ${err.message}` };
+      }
+    },
+    [addTask, updateTask, deleteTask, addEvent, addProject, setActiveTab, tasks, projects]
+  );
+
+  const sendAssistantMessage = useCallback(
+    async (text: string, isVoice = false): Promise<AIChatMessage> => {
+      const userMsg: AIChatMessage = {
+        id: `msg_${Date.now()}`,
+        sender: 'user',
+        text,
+        timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        isVoice,
+      };
+
+      setChatMessages((prev) => [...prev, userMsg]);
+      setIsAiLoading(true);
+
+      try {
+        const payload = {
+          message: text,
+          history: chatMessages.slice(-8).map((m) => ({ sender: m.sender, content: m.text })),
+          systemContext: {
+            currentDate: getTodayDateString(),
+            currentTime: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            userName: user.name,
+            tasks: tasks.slice(0, 30),
+            projects: projects.slice(0, 15),
+            events: events.slice(0, 15),
+          },
+        };
+
+        const res = await fetch('/api/ai/assistant-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        const executedActions: AIExecutedAction[] = [];
+
+        if (Array.isArray(data.actions) && data.actions.length > 0) {
+          for (const act of data.actions) {
+            const result = await executeAiAction(act);
+            executedActions.push({
+              id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              type: act.type,
+              status: result.success ? 'executed' : 'failed',
+              summary: result.summary,
+              data: act.data,
+            });
+          }
+        }
+
+        const assistantMsg: AIChatMessage = {
+          id: `msg_${Date.now() + 1}`,
+          sender: 'assistant',
+          text: data.reply || 'Comando processado com sucesso.',
+          timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+          actions: executedActions,
+          suggestedPrompts: data.suggestedPrompts || [],
+        };
+
+        setChatMessages((prev) => [...prev, assistantMsg]);
+        return assistantMsg;
+      } catch (err: any) {
+        const errorMsg: AIChatMessage = {
+          id: `msg_${Date.now() + 1}`,
+          sender: 'assistant',
+          text: 'Desculpe, ocorreu uma instabilidade na conexão com o Gemini. Você pode tentar novamente.',
+          timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        };
+        setChatMessages((prev) => [...prev, errorMsg]);
+        return errorMsg;
+      } finally {
+        setIsAiLoading(false);
+      }
+    },
+    [chatMessages, user.name, tasks, projects, events, executeAiAction]
+  );
+
+  const clearChatHistory = useCallback(() => {
+    const welcomeMsg: AIChatMessage = {
+      id: `msg_${Date.now()}`,
+      sender: 'assistant',
+      text: 'Histórico limpo. Como posso ajudar com sua produtividade hoje?',
+      timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      suggestedPrompts: [
+        '🎙️ Crie uma tarefa urgente para hoje',
+        '📅 Agende uma reunião para amanhã',
+        '📋 O que eu tenho pendente para hoje?',
+      ],
+    };
+    setChatMessages([welcomeMsg]);
+    try {
+      localStorage.setItem('fluxo_ai_chat_history', JSON.stringify([welcomeMsg]));
+    } catch {}
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -1271,6 +1793,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         timeEntries,
         activeTimer,
         isAiLoading,
+        allProjectRoutines,
 
         addTask,
         updateTask,
@@ -1284,6 +1807,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addProject,
         updateProject,
         deleteProject,
+        addProjectRoutine,
+        toggleProjectRoutine,
+        resetProjectRoutines,
+        deleteProjectRoutine,
+        addProjectLink,
+        deleteProjectLink,
+        addProjectWorkLog,
+        deleteProjectWorkLog,
+        startProjectFocusTimer,
 
         addEvent,
         updateEvent,
@@ -1338,6 +1870,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         aiParseAndCreateTask,
         aiBreakdownProjectTasks,
         aiGetSmartPriorities,
+        chatMessages,
+        isAssistantOpen,
+        setIsAssistantOpen,
+        sendAssistantMessage,
+        clearChatHistory,
+        executeAiAction,
       }}
     >
       {children}

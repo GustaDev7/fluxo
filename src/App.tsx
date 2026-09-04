@@ -22,6 +22,10 @@ import { FocusView } from './components/views/FocusView';
 import { AnalyticsView } from './components/views/AnalyticsView';
 import { SettingsView } from './components/views/SettingsView';
 import { GuideView } from './components/views/GuideView';
+import { AssistantView } from './components/views/AssistantView';
+import { FinanceView } from './components/views/FinanceView';
+import { AIAssistantWidget } from './components/AIAssistantWidget';
+import { FinanceProvider } from './context/FinanceContext';
 
 const AppContent: React.FC = () => {
   const {
@@ -94,6 +98,8 @@ const AppContent: React.FC = () => {
     switch (activeTab) {
       case 'dashboard':
         return <DashboardView />;
+      case 'assistant':
+        return <AssistantView />;
       case 'inbox':
         return <InboxView />;
       case 'tasks':
@@ -120,6 +126,8 @@ const AppContent: React.FC = () => {
         return <GuideView />;
       case 'settings':
         return <SettingsView />;
+      case 'finance':
+        return <FinanceView />;
       default:
         return <DashboardView />;
     }
@@ -141,11 +149,12 @@ const AppContent: React.FC = () => {
         </main>
       </div>
 
-      {/* Global Interactive Modals */}
+      {/* Global Interactive Modals & Voice Copilot */}
       <QuickCaptureModal />
       <CommandPalette />
       <TaskModal />
       <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
+      <AIAssistantWidget />
     </div>
   );
 };
@@ -153,7 +162,9 @@ const AppContent: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
-      <AppContent />
+      <FinanceProvider>
+        <AppContent />
+      </FinanceProvider>
     </AppProvider>
   );
 }

@@ -14,6 +14,7 @@ import {
   ArrowRight,
   BookOpen,
   Keyboard,
+  DollarSign,
 } from 'lucide-react';
 
 export const CommandPalette: React.FC = () => {
@@ -70,6 +71,16 @@ export const CommandPalette: React.FC = () => {
       action: () => {
         setIsCommandPaletteOpen(false);
         setActiveTab('projects');
+      },
+    },
+    {
+      id: 'act_finance',
+      label: 'Finanças AUVP (Orçamento Base Zero, Contas & Investimentos)',
+      category: 'Navegação & Módulos',
+      icon: DollarSign,
+      action: () => {
+        setIsCommandPaletteOpen(false);
+        setActiveTab('finance');
       },
     },
     {

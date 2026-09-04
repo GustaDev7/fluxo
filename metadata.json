@@ -1,6 +1,6 @@
 {
   "name": "Fluxo",
-  "description": "Fluxo - Planeje, organize e conquiste. Central completa de gestão de tempo, tarefas, calendário, projetos e produtividade.",
-  "requestFramePermissions": [],
+  "description": "Fluxo - Planeje, organize e conquiste. Central completa de gestão de tempo, tarefas, calendário, projetos e produtividade com assistente de IA Gemini e controle por voz.",
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

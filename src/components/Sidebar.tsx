@@ -21,6 +21,8 @@ import {
   ChevronRight,
   Plus,
   Zap,
+  Sparkles,
+  DollarSign,
 } from 'lucide-react';
 
 interface NavItem {
@@ -48,6 +50,7 @@ export const Sidebar: React.FC = () => {
 
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'assistant', label: 'Assistente IA', icon: Sparkles },
     { id: 'inbox', label: 'Inbox', icon: Inbox, badge: inboxCount > 0 ? inboxCount : undefined },
     { id: 'tasks', label: 'Tarefas', icon: CheckSquare, badge: pendingTasksCount > 0 ? pendingTasksCount : undefined },
     { id: 'agenda', label: 'Agenda', icon: Clock },
@@ -55,6 +58,7 @@ export const Sidebar: React.FC = () => {
     { id: 'projects', label: 'Projetos', icon: FolderKanban },
     { id: 'monthly', label: 'Plano Mensal', icon: CalendarRange },
     { id: 'goals', label: 'Metas', icon: Target },
+    { id: 'finance', label: 'Finanças AUVP', icon: DollarSign },
     { id: 'habits', label: 'Hábitos', icon: Flame },
     { id: 'notes', label: 'Notas & Docs', icon: FileText },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },

@@ -97,7 +97,7 @@ export const InboxView: React.FC = () => {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder="O que está na sua cabeça agora? Digite uma ideia, demanda ou lembrete..."
-            className="w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50/60 p-3 text-sm text-neutral-900 placeholder-neutral-400 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-neutral-800 dark:bg-neutral-800/40 dark:text-neutral-100 dark:focus:bg-neutral-900"
+            className="w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50/60 p-3 text-sm text-neutral-900 placeholder-neutral-400 focus:border-indigo-500 focus:outline-none dark:border-neutral-800 dark:bg-neutral-800/40 dark:text-neutral-100"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 handleQuickAdd(e);
