@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, LayoutGrid, List, Plus, Save, Sparkles, Table2, Trash2 } from 'lucide-react';
+import { AlertTriangle, BarChart3, CheckCircle2, History, LayoutGrid, Lightbulb, List, Plus, Save, Settings, Sparkles, Table2, Target, Trash2, Wand2 } from 'lucide-react';
 import { useFinance } from '../../../context/FinanceContext';
 import { BudgetCategory, BudgetIncomeSource, MasterCategory, ZeroBasedBudget } from '../../../types/finance';
 import { calculateBudget, resolveCategory } from '../../../domain/budgetEngine';
@@ -41,6 +41,7 @@ export const FinanceBudgetTab: React.FC = () => {
       .forEach((tx) => { values[tx.masterCategory] = (values[tx.masterCategory] || 0) + tx.amount; });
     return values;
   }, [transactions, draft.month]);
+  const actualTotal = useMemo(() => Object.values(actual).reduce<number>((sum, value) => sum + Number(value), 0), [actual]);
 
   const updateCategory = (id: string, patch: Partial<BudgetCategory>) => setDraft((current) => {
     const income = calculateBudget(current).plannedIncome;
@@ -68,6 +69,16 @@ export const FinanceBudgetTab: React.FC = () => {
   };
 
   const roots = result.categories.filter((category) => !category.parentId && !category.archived).sort((a, b) => a.priority - b.priority);
+  const donutBackground = useMemo(() => {
+    if (result.totalAllocated <= 0) return 'conic-gradient(#262626 0 100%)';
+    let cursor = 0;
+    const segments = roots.map((category) => {
+      const start = cursor;
+      cursor += category.plannedAmount / result.totalAllocated * 100;
+      return `${category.color} ${start}% ${cursor}%`;
+    });
+    return `conic-gradient(${segments.join(',')})`;
+  }, [result.totalAllocated, roots]);
   const statusText = result.status === 'balanced' ? 'Orçamento equilibrado' : result.status === 'under'
     ? `${formatBRL(result.balance)} não alocados` : `${formatBRL(Math.abs(result.balance))} acima da renda`;
 
@@ -91,7 +102,7 @@ export const FinanceBudgetTab: React.FC = () => {
       </div>
     </section>
 
-    <section className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+    {editing && <section className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <div className="flex items-center justify-between"><div><h3 className="text-sm font-black">Fontes de renda</h3><p className="text-xs text-neutral-500">Previsto e recebido ficam separados.</p></div>{editing && <button onClick={() => setDraft({ ...draft, incomeSources: [...(draft.incomeSources || []), newIncome('Nova renda')] })} className="flex items-center gap-1 text-xs font-bold text-indigo-600"><Plus className="h-4 w-4"/>Adicionar</button>}</div>
       <div className="mt-4 space-y-2">{draft.incomeSources?.map((item) => <div key={item.id} className="grid grid-cols-[1fr_105px_105px_auto] gap-2 rounded-xl bg-neutral-50 p-2 dark:bg-neutral-800/40">
         <input disabled={!editing} value={item.name} onChange={(e) => setDraft({ ...draft, incomeSources: draft.incomeSources?.map((s) => s.id === item.id ? { ...s, name: e.target.value } : s) })} className="min-w-0 bg-transparent px-2 text-xs font-bold disabled:opacity-100"/>
@@ -99,8 +110,16 @@ export const FinanceBudgetTab: React.FC = () => {
         <input disabled={!editing} aria-label="Recebido" title="Recebido" type="number" min="0" step="0.01" value={item.receivedAmount} onChange={(e) => setDraft({ ...draft, incomeSources: draft.incomeSources?.map((s) => s.id === item.id ? { ...s, receivedAmount: Number(e.target.value) } : s) })} className="rounded-lg border border-neutral-200 bg-white px-2 text-xs dark:border-neutral-700 dark:bg-neutral-900"/>
         {editing && <button aria-label="Excluir fonte" onClick={() => setDraft({ ...draft, incomeSources: draft.incomeSources?.filter((s) => s.id !== item.id) })}><Trash2 className="h-4 w-4 text-neutral-400"/></button>}
       </div>)}</div>
-    </section>
+    </section>}
 
+    <nav className="flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label="Áreas do orçamento">
+      {[
+        ['Visão geral', BarChart3], ['Categorias', LayoutGrid], ['Análises', Target],
+        ['Histórico', History], ['Cenários', Wand2], ['Configurações', Settings],
+      ].map(([label, Icon], index) => <button key={label as string} className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-xs font-bold ${index === 0 ? 'border-indigo-500 text-indigo-500' : 'border-transparent text-neutral-500'}`}><Icon className="h-4 w-4"/>{label as string}</button>)}
+    </nav>
+
+    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
     <section>
       <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-black">Distribuição</h3><p className="text-xs text-neutral-500">Percentual e valor estão conectados.</p></div><div className="flex rounded-xl border border-neutral-200 p-1 dark:border-neutral-800">{([['cards', LayoutGrid], ['list', List], ['table', Table2]] as const).map(([mode, Icon]) => <button key={mode} aria-label={mode} onClick={() => setDraft({ ...draft, viewMode: mode })} className={`rounded-lg p-2 ${draft.viewMode === mode ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900' : 'text-neutral-400'}`}><Icon className="h-4 w-4"/></button>)}</div></div>
       <div className={draft.viewMode === 'cards' ? 'grid gap-3 md:grid-cols-2' : 'space-y-2'}>{roots.map((category) => {
@@ -116,6 +135,26 @@ export const FinanceBudgetTab: React.FC = () => {
       })}</div>
       {editing && <button onClick={() => setDraft({ ...draft, categories: [...(draft.categories || []), { id: crypto.randomUUID(), name: 'Nova categoria', color: '#6366f1', allocationMode: 'fixed', percentage: '0', fixedAmount: 0, plannedAmount: 0, priority: roots.length + 1, archived: false }] })} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-neutral-300 py-3 text-xs font-bold dark:border-neutral-700"><Plus className="h-4 w-4"/>Nova categoria</button>}
     </section>
+
+    <aside className="space-y-3 xl:sticky xl:top-4">
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h3 className="text-sm font-black">Distribuição da renda</h3>
+        <div className="mt-4 flex items-center gap-5">
+          <div className="relative h-32 w-32 shrink-0 rounded-full" style={{ background: donutBackground }}><div className="absolute inset-5 grid place-items-center rounded-full bg-white text-center dark:bg-neutral-900"><span><b className="block text-sm">{formatBRL(result.totalAllocated)}</b><small className="text-[10px] text-neutral-500">alocados</small></span></div></div>
+          <div className="min-w-0 flex-1 space-y-2">{roots.map((category) => <div key={category.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[11px]"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: category.color }}/><span className="truncate text-neutral-500">{category.name}</span><b>{Number(category.percentage).toFixed(1).replace('.', ',')}%</b></div>)}</div>
+        </div>
+      </section>
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h3 className="text-sm font-black">Planejado x realizado</h3>
+        <div className="mt-4 space-y-4">
+          <div><div className="flex justify-between text-xs"><span className="text-neutral-500">Planejado</span><b>{formatBRL(result.totalAllocated)}</b></div><div className="mt-2 h-2 rounded-full bg-neutral-100 dark:bg-neutral-800"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.min(Number(result.percentageAllocated), 100)}%` }}/></div></div>
+          <div><div className="flex justify-between text-xs"><span className="text-neutral-500">Realizado</span><b>{formatBRL(actualTotal)}</b></div><div className="mt-2 h-2 rounded-full bg-neutral-100 dark:bg-neutral-800"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${result.totalAllocated > 0 ? Math.min(actualTotal / result.totalAllocated * 100, 100) : 0}%` }}/></div></div>
+        </div>
+      </section>
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><h3 className="text-sm font-black">Ações rápidas</h3><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => setEditing(true)} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Ajustar valores</button><button onClick={() => setSuggestion(true)} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Equilibrar</button></div></section>
+      <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900 dark:bg-indigo-950/20"><div className="flex gap-3"><Lightbulb className="h-5 w-5 shrink-0 text-indigo-500"/><div><h3 className="text-sm font-black">Dica do orçamento</h3><p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">Revise suas categorias mensalmente. As sugestões orientam, mas a decisão final é sempre sua.</p></div></div></section>
+    </aside>
+    </div>
 
     {suggestion && <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"><div className="w-full max-w-md rounded-3xl bg-white p-6 dark:bg-neutral-900"><Sparkles className="h-6 w-6 text-indigo-600"/><h3 className="mt-3 text-lg font-black">Prévia do padrão AUVP</h3><p className="text-sm text-neutral-500">Sugestão personalizável. Nada muda sem confirmação.</p><div className="mt-4 space-y-2">{AUVP.map(([key, pct]) => <div key={key} className="flex justify-between text-sm"><span>{MASTER_CATEGORY_CONFIG[key].name}</span><b>{pct}% · {formatBRL(result.plannedIncome * Number(pct) / 100)}</b></div>)}</div><div className="mt-5 flex gap-2"><button onClick={() => setSuggestion(false)} className="flex-1 rounded-xl border py-2 text-xs font-bold">Cancelar</button><button onClick={applyAuvp} className="flex-1 rounded-xl bg-indigo-600 py-2 text-xs font-bold text-white">Aplicar sugestão</button></div></div></div>}
   </div>;
