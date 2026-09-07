@@ -216,6 +216,7 @@ export interface InvestmentAssetItem {
 }
 
 export interface ZeroBasedBudget {
+  id?: string;
   month: string; // YYYY-MM
   plannedIncome: number;
   allocations: {
@@ -227,6 +228,38 @@ export interface ZeroBasedBudget {
     conhecimento: number;
   };
   notes?: string;
+  incomeSources?: BudgetIncomeSource[];
+  categories?: BudgetCategory[];
+  viewMode?: 'cards' | 'list' | 'table';
+  advancedMode?: boolean;
+}
+
+export type BudgetAllocationMode = 'percentage' | 'fixed' | 'unbudgeted';
+
+export interface BudgetIncomeSource {
+  id: string;
+  name: string;
+  type: 'salary' | 'freelance' | 'commission' | 'benefit' | 'investments' | 'rental' | 'extra' | 'other';
+  plannedAmount: number;
+  receivedAmount: number;
+  recurring: boolean;
+}
+
+export interface BudgetCategory {
+  id: string;
+  masterCategory?: MasterCategory;
+  parentId?: string;
+  name: string;
+  description?: string;
+  color: string;
+  icon?: string;
+  allocationMode: BudgetAllocationMode;
+  percentage: string;
+  fixedAmount: number;
+  plannedAmount: number;
+  spendingLimit?: number;
+  priority: number;
+  archived: boolean;
 }
 
 export interface MonthlyClosing {
