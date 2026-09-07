@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { FluxoLogo } from './FluxoLogo';
 
 export const AuthScreen: React.FC = () => {
-  const { signIn, signUp, resetPassword } = useAuth();
+  const { signIn, signUp, resendConfirmation, resetPassword } = useAuth();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -13,11 +13,24 @@ export const AuthScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
+
+  const friendlyError = (err: unknown) => {
+    const raw = err instanceof Error ? err.message : '';
+    if (/email not confirmed/i.test(raw)) {
+      setNeedsConfirmation(true);
+      return 'Seu e-mail ainda não foi confirmado. Abra a mensagem enviada pelo Fluxo ou reenvie o link abaixo.';
+    }
+    if (/invalid login credentials/i.test(raw)) return 'E-mail ou senha incorretos.';
+    if (/email rate limit exceeded/i.test(raw)) return 'Muitos envios em pouco tempo. Aguarde alguns minutos e tente novamente.';
+    return raw || 'Não foi possível concluir. Tente novamente.';
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
     setMessage('');
+    setNeedsConfirmation(false);
     setIsSubmitting(true);
     try {
       if (mode === 'signin') {
@@ -29,7 +42,26 @@ export const AuthScreen: React.FC = () => {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível concluir. Tente novamente.');
+      setError(friendlyError(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const resend = async () => {
+    if (!email.trim()) {
+      setError('Informe o e-mail usado no cadastro.');
+      return;
+    }
+    setError('');
+    setMessage('');
+    setIsSubmitting(true);
+    try {
+      await resendConfirmation(email.trim());
+      setMessage('Novo e-mail de confirmação enviado. Confira também a caixa de spam.');
+      setNeedsConfirmation(false);
+    } catch (err) {
+      setError(friendlyError(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -109,6 +141,11 @@ export const AuthScreen: React.FC = () => {
               </label>
 
               {error && <p role="alert" className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2.5 text-sm text-rose-300">{error}</p>}
+              {needsConfirmation && (
+                <button type="button" onClick={resend} disabled={isSubmitting} className="w-full rounded-xl border border-indigo-400/30 bg-indigo-400/10 px-4 py-2.5 text-sm font-bold text-indigo-300 transition hover:bg-indigo-400/20 disabled:opacity-60">
+                  Reenviar e-mail de confirmação
+                </button>
+              )}
               {message && <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-300">{message}</p>}
 
               <button disabled={isSubmitting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-bold transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60">
