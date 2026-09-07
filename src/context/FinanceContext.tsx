@@ -17,6 +17,7 @@ import {
   FinancialHealthScore,
 } from '../types/finance';
 import { generateSchedule } from '../domain/debtEngine';
+import { calculateBudget } from '../domain/budgetEngine';
 import {
   INITIAL_ACCOUNTS,
   INITIAL_CREDIT_CARDS,
@@ -142,6 +143,7 @@ interface FinanceContextType {
   recordAporte: (assetId: string, amount: number, accountId: string, quantity?: number) => void;
 
   updateZeroBasedBudget: (allocations: Partial<ZeroBasedBudget['allocations']>, plannedIncome?: number) => void;
+  updateBudgetPlan: (budget: ZeroBasedBudget) => void;
   saveMonthlyClosing: (rating: MonthlyClosing['rating'], notes: string) => void;
   saveDiagnosis: (data: FinancialDiagnosisData) => void;
 
@@ -206,7 +208,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let isMounted = true;
     async function loadFinanceFromDb() {
       try {
-        const data = await loadFinanceData();
+        const data = await loadFinanceData(authUser.id);
         if (data && isMounted) {
           setAccounts(data.accounts as FinanceAccount[]);
           setCreditCards(data.creditCards as CreditCard[]);
@@ -421,7 +423,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [bills, todayStr]);
 
   const zeroBasedStatus = useMemo(() => {
-    return calculateZeroBasedBudgetStatus(budget);
+    if (!budget.categories?.length) return calculateZeroBasedBudgetStatus(budget);
+    const result = calculateBudget(budget);
+    return {
+      totalAllocated: result.totalAllocated,
+      unallocated: result.balance,
+      percentageAllocated: Number(result.percentageAllocated),
+      status: result.status === 'balanced' ? 'balanced' as const : result.status === 'under' ? 'partially_planned' as const : 'over_budget' as const,
+    };
   }, [budget]);
 
   const healthScore = useMemo(() => {
@@ -922,6 +931,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     []
   );
 
+  const updateBudgetPlan = useCallback((nextBudget: ZeroBasedBudget) => {
+    setBudget(nextBudget);
+  }, []);
+
   // Monthly Closing
   const saveMonthlyClosing = useCallback(
     (rating: MonthlyClosing['rating'], notes: string) => {
@@ -1117,6 +1130,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     recordAporte,
 
     updateZeroBasedBudget,
+    updateBudgetPlan,
     saveMonthlyClosing,
     saveDiagnosis,
 
