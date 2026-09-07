@@ -18,6 +18,7 @@ import {
   FileSpreadsheet,
   HelpCircle,
   Activity,
+  AlertCircle,
 } from 'lucide-react';
 
 export const FinanceOverviewTab: React.FC = () => {
@@ -39,13 +40,19 @@ export const FinanceOverviewTab: React.FC = () => {
     openDiagnosisModal,
     budget,
     zeroBasedStatus,
+    monthlyClosingHistory,
   } = useFinance();
 
   const totalDebts = debts.reduce((acc, d) => (d.status === 'active' ? acc + d.currentBalance : 0), 0);
 
-  // Variation compared to previous month
-  const netWorthVariation = 1250.0;
-  const netWorthPercent = 7.3;
+  // Variation compared to previous month closing (if recorded)
+  const previousClosing = monthlyClosingHistory.length > 0 ? monthlyClosingHistory[0] : null;
+  const prevNetWorth = previousClosing && previousClosing.netWorth > 0 ? previousClosing.netWorth : 0;
+  const netWorthVariation = prevNetWorth > 0 ? netWorthSummary.netWorth - prevNetWorth : 0;
+  const netWorthPercent = prevNetWorth > 0 ? ((netWorthVariation / prevNetWorth) * 100).toFixed(1) : null;
+
+  const currentMonthLabel = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const totalBaseIncome = monthIncome || budget.plannedIncome || 0;
 
   return (
     <div className="space-y-6">
@@ -76,9 +83,9 @@ export const FinanceOverviewTab: React.FC = () => {
       )}
 
       {/* Top 7 Metrics Cards Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
         {/* 1. Patrimônio Líquido */}
-        <div className="col-span-2 sm:col-span-2 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="col-span-1 sm:col-span-2 xl:col-span-2 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1.5">
             <span className="text-xs font-semibold">Patrimônio Líquido</span>
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
@@ -88,10 +95,14 @@ export const FinanceOverviewTab: React.FC = () => {
           <div className="text-xl font-black text-neutral-900 dark:text-neutral-100">
             {formatBRL(netWorthSummary.netWorth)}
           </div>
-          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-            <span>+{formatBRL(netWorthVariation)} (+{netWorthPercent}%)</span>
-            <span className="text-neutral-400 font-normal">vs mês anterior</span>
-          </div>
+          {netWorthPercent !== null ? (
+            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex-wrap">
+              <span>{netWorthVariation >= 0 ? `+${formatBRL(netWorthVariation)}` : formatBRL(netWorthVariation)} ({netWorthPercent}%)</span>
+              <span className="text-neutral-400 font-normal">vs anterior</span>
+            </div>
+          ) : (
+            <div className="mt-1 text-[11px] text-neutral-400">Ativos menos passivos</div>
+          )}
         </div>
 
         {/* 2. Saldo Disponível */}
@@ -115,7 +126,7 @@ export const FinanceOverviewTab: React.FC = () => {
           <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 truncate">
             {formatBRL(monthIncome || budget.plannedIncome)}
           </div>
-          <div className="mt-1 text-[10px] text-neutral-400">Entradas de Setembro</div>
+          <div className="mt-1 text-[10px] text-neutral-400">Entradas no mês</div>
         </div>
 
         {/* 4. Despesas do Mês */}
@@ -161,7 +172,7 @@ export const FinanceOverviewTab: React.FC = () => {
             <ShieldCheck className="h-4 w-4 text-blue-500" />
           </div>
           <div className="text-lg font-black text-blue-600 dark:text-blue-400 truncate">
-            {formatPercent(savingsRate || 19.2)}
+            {formatPercent(savingsRate)}
           </div>
           <div className="mt-1 text-[10px] text-neutral-400">Meta AUVP: 20%+</div>
         </div>
@@ -175,8 +186,8 @@ export const FinanceOverviewTab: React.FC = () => {
           <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-                  Resumo do Mês • Setembro 2026
+                <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100 capitalize">
+                  Resumo do Mês • {currentMonthLabel}
                 </h3>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">
                   Comparativo de entradas, saídas e patrimônio acumulado
@@ -201,29 +212,29 @@ export const FinanceOverviewTab: React.FC = () => {
                   Comprometimento da Renda (Despesas + Aportes)
                 </span>
                 <span className="font-bold text-neutral-900 dark:text-neutral-100">
-                  {formatBRL(monthExpenses + monthInvestments)} / {formatBRL(monthIncome || budget.plannedIncome)}
+                  {formatBRL(monthExpenses + monthInvestments)} / {formatBRL(totalBaseIncome)}
                 </span>
               </div>
               <div className="h-3 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800 flex">
                 <div
                   className="bg-blue-500 transition-all"
-                  style={{ width: `${Math.min(100, (monthExpenses / (monthIncome || 5200)) * 100)}%` }}
+                  style={{ width: `${totalBaseIncome > 0 ? Math.min(100, (monthExpenses / totalBaseIncome) * 100) : 0}%` }}
                   title="Despesas"
                 />
                 <div
                   className="bg-emerald-500 transition-all"
-                  style={{ width: `${Math.min(100, (monthInvestments / (monthIncome || 5200)) * 100)}%` }}
+                  style={{ width: `${totalBaseIncome > 0 ? Math.min(100, (monthInvestments / totalBaseIncome) * 100) : 0}%` }}
                   title="Investimentos"
                 />
               </div>
               <div className="flex items-center gap-4 text-[11px] text-neutral-500">
                 <div className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-blue-500" />
-                  <span>Despesas ({Math.round((monthExpenses / (monthIncome || 5200)) * 100)}%)</span>
+                  <span>Despesas ({totalBaseIncome > 0 ? Math.round((monthExpenses / totalBaseIncome) * 100) : 0}%)</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  <span>Aportes ({Math.round((monthInvestments / (monthIncome || 5200)) * 100)}%)</span>
+                  <span>Aportes ({totalBaseIncome > 0 ? Math.round((monthInvestments / totalBaseIncome) * 100) : 0}%)</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-neutral-300 dark:bg-neutral-700" />
@@ -240,8 +251,18 @@ export const FinanceOverviewTab: React.FC = () => {
               >
                 <div>
                   <div className="text-xs font-bold text-neutral-900 dark:text-neutral-100">Orçamento Base Zero</div>
-                  <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                    {zeroBasedStatus.status === 'balanced' ? '🟢 100% Equilibrado' : '🟡 Ajustar Alocação'}
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+                    {zeroBasedStatus.status === 'balanced' ? (
+                      <>
+                        <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400 inline" />
+                        <span className="text-emerald-600 dark:text-emerald-400">100% Equilibrado</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="h-3 w-3 text-amber-500 inline" />
+                        <span className="text-amber-600 dark:text-amber-400">Ajustar Alocação</span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <ChevronRight className="h-4 w-4 text-neutral-400" />
@@ -261,13 +282,14 @@ export const FinanceOverviewTab: React.FC = () => {
               </button>
 
               <button
-                onClick={() => setSubTab('debts')}
+                onClick={() => setSubTab('emergency')}
                 className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-neutral-50 p-3.5 text-left hover:bg-neutral-100/80 dark:border-neutral-800 dark:bg-neutral-800/50 dark:hover:bg-neutral-800 transition-all"
               >
                 <div>
                   <div className="text-xs font-bold text-neutral-900 dark:text-neutral-100">Reserva de Emergência</div>
-                  <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                    🛡️ {emergencyCoverage.monthsCovered} meses cobertos
+                  <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                    <ShieldCheck className="h-3 w-3 inline" />
+                    <span>{emergencyCoverage.monthsCovered} meses cobertos</span>
                   </div>
                 </div>
                 <ChevronRight className="h-4 w-4 text-neutral-400" />
@@ -306,59 +328,65 @@ export const FinanceOverviewTab: React.FC = () => {
             </div>
 
             <div className="space-y-2.5">
-              {[...overdueBills, ...todayBills, ...upcomingBills.slice(0, 3)].map((bill) => {
-                const isOverdue = overdueBills.some((b) => b.id === bill.id);
-                return (
-                  <div
-                    key={bill.id}
-                    className={`flex items-center justify-between rounded-2xl border p-3.5 transition-all ${
-                      isOverdue
-                        ? 'border-rose-200 bg-rose-50/50 dark:border-rose-900/40 dark:bg-rose-950/20'
-                        : 'border-neutral-200 bg-neutral-50/70 dark:border-neutral-800 dark:bg-neutral-800/40'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-black ${
-                          isOverdue
-                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300'
-                            : 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200'
-                        }`}
-                      >
-                        {bill.dueDate.split('-')[2]}
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                          {bill.title}
+              {[...overdueBills, ...todayBills, ...upcomingBills.slice(0, 3)].length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-neutral-200 p-6 text-center text-xs text-neutral-400 dark:border-neutral-800">
+                  Nenhuma conta cadastrada para vencer no momento.
+                </div>
+              ) : (
+                [...overdueBills, ...todayBills, ...upcomingBills.slice(0, 3)].map((bill) => {
+                  const isOverdue = overdueBills.some((b) => b.id === bill.id);
+                  return (
+                    <div
+                      key={bill.id}
+                      className={`flex items-center justify-between rounded-2xl border p-3.5 transition-all ${
+                        isOverdue
+                          ? 'border-rose-200 bg-rose-50/50 dark:border-rose-900/40 dark:bg-rose-950/20'
+                          : 'border-neutral-200 bg-neutral-50/70 dark:border-neutral-800 dark:bg-neutral-800/40'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-black ${
+                            isOverdue
+                              ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300'
+                              : 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200'
+                          }`}
+                        >
+                          {bill.dueDate.split('-')[2]}
                         </div>
-                        <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                          Vencimento: {bill.dueDate} • {bill.subcategory || bill.masterCategory}
+                        <div>
+                          <div className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
+                            {bill.title}
+                          </div>
+                          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                            Vencimento: {bill.dueDate} • {bill.subcategory || bill.masterCategory}
+                          </div>
                         </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <div className="text-sm font-black text-neutral-900 dark:text-neutral-100">
-                          {formatBRL(bill.amount)}
-                        </div>
-                        {isOverdue && (
-                          <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
-                            Vencida!
-                          </span>
-                        )}
                       </div>
 
-                      <button
-                        onClick={() => setSubTab('bills')}
-                        className="rounded-xl border border-neutral-200 bg-white px-3 py-1 text-xs font-semibold text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
-                      >
-                        Gerenciar
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div className="text-sm font-black text-neutral-900 dark:text-neutral-100">
+                            {formatBRL(bill.amount)}
+                          </div>
+                          {isOverdue && (
+                            <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                              Vencida!
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => setSubTab('bills')}
+                          className="rounded-xl border border-neutral-200 bg-white px-3 py-1 text-xs font-semibold text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+                        >
+                          Gerenciar
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

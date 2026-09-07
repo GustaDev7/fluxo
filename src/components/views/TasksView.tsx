@@ -38,6 +38,7 @@ export const TasksView: React.FC = () => {
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [mobileKanbanCol, setMobileKanbanCol] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
@@ -432,129 +433,167 @@ export const TasksView: React.FC = () => {
 
       {/* View Mode: KANBAN */}
       {viewMode === 'kanban' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 overflow-x-auto pb-4">
-          {columns.map((col) => {
-            const colTasks = sortedTasks.filter((t) => t.status === col.status);
-            const isOverLimit = col.limit && colTasks.length > col.limit;
-
-            return (
-              <div
-                key={col.id}
-                className="flex flex-col rounded-2xl border border-neutral-200 bg-neutral-50/60 p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/60 min-w-[260px]"
-              >
-                {/* Column Header */}
-                <div className="flex items-center justify-between border-b border-neutral-200/80 pb-2.5 dark:border-neutral-800">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-2 w-2 rounded-full"
-                      style={{ backgroundColor: col.color }}
-                    />
-                    <h3 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                      {col.title}
-                    </h3>
-                  </div>
-
+        <div className="space-y-3">
+          {/* Mobile column switch pills */}
+          <div className="flex md:hidden items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none">
+            <button
+              onClick={() => setMobileKanbanCol('all')}
+              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all whitespace-nowrap ${
+                mobileKanbanCol === 'all'
+                  ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 shadow-xs'
+                  : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
+              }`}
+            >
+              Todas ({sortedTasks.length})
+            </button>
+            {columns.map((col) => {
+              const count = sortedTasks.filter((t) => t.status === col.status).length;
+              return (
+                <button
+                  key={col.id}
+                  onClick={() => setMobileKanbanCol(col.status)}
+                  className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                    mobileKanbanCol === col.status
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
+                  }`}
+                >
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                      isOverLimit
-                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-                        : 'bg-white text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
-                    }`}
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ backgroundColor: mobileKanbanCol === col.status ? '#ffffff' : col.color }}
+                  />
+                  <span>{col.title} ({count})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 overflow-x-auto pb-4">
+            {columns
+              .filter((col) => mobileKanbanCol === 'all' || mobileKanbanCol === col.status)
+              .map((col) => {
+                const colTasks = sortedTasks.filter((t) => t.status === col.status);
+                const isOverLimit = col.limit && colTasks.length > col.limit;
+
+                return (
+                  <div
+                    key={col.id}
+                    className="flex flex-col rounded-2xl border border-neutral-200 bg-neutral-50/60 p-3.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/60 min-w-[260px]"
                   >
-                    {colTasks.length} {col.limit ? `/ ${col.limit}` : ''}
-                  </span>
-                </div>
+                    {/* Column Header */}
+                    <div className="flex items-center justify-between border-b border-neutral-200/80 pb-2.5 dark:border-neutral-800">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: col.color }}
+                        />
+                        <h3 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
+                          {col.title}
+                        </h3>
+                      </div>
 
-                {/* Column Task Cards */}
-                <div className="mt-3 flex-1 space-y-2.5 overflow-y-auto max-h-[70vh]">
-                  {colTasks.map((task) => {
-                    const project = projects.find((p) => p.id === task.projectId);
-
-                    return (
-                      <div
-                        key={task.id}
-                        className="group rounded-xl border border-neutral-200 bg-white p-3 shadow-xs hover:border-indigo-300 hover:shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-indigo-900 transition-all space-y-2"
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          isOverLimit
+                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                            : 'bg-white text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
+                        }`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <h4
-                            onClick={() => setSelectedTaskId(task.id)}
-                            className="text-xs font-bold text-neutral-900 hover:text-indigo-600 cursor-pointer dark:text-neutral-100 dark:hover:text-indigo-400 line-clamp-2"
+                        {colTasks.length} {col.limit ? `/ ${col.limit}` : ''}
+                      </span>
+                    </div>
+
+                    {/* Column Task Cards */}
+                    <div className="mt-3 flex-1 space-y-2.5 overflow-y-auto max-h-[70vh]">
+                      {colTasks.map((task) => {
+                        const project = projects.find((p) => p.id === task.projectId);
+
+                        return (
+                          <div
+                            key={task.id}
+                            className="group rounded-xl border border-neutral-200 bg-white p-3 shadow-xs hover:border-indigo-300 hover:shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-indigo-900 transition-all space-y-2"
                           >
-                            {task.title}
-                          </h4>
-
-                          {task.priority !== 'none' && (
-                            <span
-                              className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase ${
-                                priorityBadge[task.priority].class
-                              }`}
-                            >
-                              {task.priority}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Project Pill */}
-                        {project && (
-                          <div className="flex items-center gap-1 text-[10px] font-medium text-neutral-500">
-                            <span
-                              className="h-1.5 w-1.5 rounded-full"
-                              style={{ backgroundColor: project.color }}
-                            />
-                            <span className="truncate">{project.name}</span>
-                          </div>
-                        )}
-
-                        {/* Card Footer: Due Date & Move Controls */}
-                        <div className="flex items-center justify-between pt-1 border-t border-neutral-100 dark:border-neutral-800/80 text-[10px] text-neutral-400">
-                          <span>{task.dueDate ? formatDatePT(task.dueDate, 'relative') : 'Sem prazo'}</span>
-
-                          <div className="flex items-center gap-1">
-                            {col.status !== 'done' && (
-                              <button
-                                onClick={() => moveTaskStatus(task.id, 'done')}
-                                className="rounded p-1 text-neutral-400 hover:text-emerald-500"
-                                title="Mover para Concluído"
+                            <div className="flex items-start justify-between gap-2">
+                              <h4
+                                onClick={() => setSelectedTaskId(task.id)}
+                                className="text-xs font-bold text-neutral-900 hover:text-indigo-600 cursor-pointer dark:text-neutral-100 dark:hover:text-indigo-400 line-clamp-2"
                               >
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                              </button>
+                                {task.title}
+                              </h4>
+
+                              {task.priority !== 'none' && (
+                                <span
+                                  className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase ${
+                                    priorityBadge[task.priority].class
+                                  }`}
+                                >
+                                  {task.priority}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Project Pill */}
+                            {project && (
+                              <div className="flex items-center gap-1 text-[10px] font-medium text-neutral-500">
+                                <span
+                                  className="h-1.5 w-1.5 rounded-full"
+                                  style={{ backgroundColor: project.color }}
+                                />
+                                <span className="truncate">{project.name}</span>
+                              </div>
                             )}
 
-                            <select
-                              value={task.status}
-                              onChange={(e) => moveTaskStatus(task.id, e.target.value as TaskStatus)}
-                              className="bg-transparent text-[10px] text-neutral-500 outline-none hover:text-neutral-800 dark:hover:text-neutral-200"
-                            >
-                              <option value="backlog">Backlog</option>
-                              <option value="todo">A Fazer</option>
-                              <option value="in_progress">Andamento</option>
-                              <option value="in_review">Revisão</option>
-                              <option value="done">Concluído</option>
-                            </select>
+                            {/* Card Footer: Due Date & Move Controls */}
+                            <div className="flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800/80 text-[10px] text-neutral-400">
+                              <span>{task.dueDate ? formatDatePT(task.dueDate, 'relative') : 'Sem prazo'}</span>
+
+                              <div className="flex items-center gap-1">
+                                {col.status !== 'done' && (
+                                  <button
+                                    onClick={() => moveTaskStatus(task.id, 'done')}
+                                    className="rounded p-1 text-neutral-400 hover:text-emerald-500"
+                                    title="Mover para Concluído"
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+
+                                <select
+                                  value={task.status}
+                                  onChange={(e) => moveTaskStatus(task.id, e.target.value as TaskStatus)}
+                                  className="rounded-md border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 text-[10px] font-medium text-neutral-700 outline-none cursor-pointer dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+                                >
+                                  <option value="backlog">Backlog</option>
+                                  <option value="todo">A Fazer</option>
+                                  <option value="in_progress">Andamento</option>
+                                  <option value="in_review">Revisão</option>
+                                  <option value="done">Concluído</option>
+                                </select>
+                              </div>
+                            </div>
                           </div>
+                        );
+                      })}
+
+                      {colTasks.length === 0 && (
+                        <div className="py-6 text-center text-[11px] text-neutral-400 border border-dashed border-neutral-200 rounded-xl dark:border-neutral-800">
+                          Vazio
                         </div>
-                      </div>
-                    );
-                  })}
-
-                  {colTasks.length === 0 && (
-                    <div className="py-6 text-center text-[11px] text-neutral-400 border border-dashed border-neutral-200 rounded-xl dark:border-neutral-800">
-                      Vazio
+                      )}
                     </div>
-                  )}
-                </div>
 
-                {/* Inline Add Task to Column */}
-                <button
-                  onClick={() => setIsQuickCaptureOpen(true)}
-                  className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-neutral-300 py-1.5 text-xs font-semibold text-neutral-500 hover:border-indigo-500 hover:text-indigo-600 dark:border-neutral-800 dark:hover:border-indigo-500"
-                >
-                  <Plus className="h-3 w-3" />
-                  <span>Adicionar</span>
-                </button>
-              </div>
-            );
-          })}
+                    {/* Inline Add Task to Column */}
+                    <button
+                      onClick={() => setIsQuickCaptureOpen(true)}
+                      className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-neutral-300 py-1.5 text-xs font-semibold text-neutral-500 hover:border-indigo-500 hover:text-indigo-600 dark:border-neutral-800 dark:hover:border-indigo-500"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>Adicionar</span>
+                    </button>
+                  </div>
+                );
+              })}
+          </div>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 {
   "name": "Fluxo",
-  "description": "Fluxo - Planeje, organize e conquiste. Central completa de gestão de tempo, tarefas, calendário, projetos e produtividade com assistente de IA Gemini e controle por voz.",
+  "description": "Fluxo - Sistema Operacional da Vida. Extensão digital integrada conectando tempo, tarefas, projetos, finanças AUVP, metas e hábitos com IA generativa Gemini.",
   "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

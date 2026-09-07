@@ -179,7 +179,7 @@ export const FinanceBudgetTab: React.FC = () => {
             </div>
             <div className="text-sm font-black mt-1">
               {zeroBasedStatus.status === 'balanced' ? (
-                <span>Saldo não alocado: R$ 0,00 🟢</span>
+                <span>Saldo não alocado: R$ 0,00</span>
               ) : (
                 <span>Diferença: {formatBRL(Math.abs(zeroBasedStatus.unallocated))}</span>
               )}

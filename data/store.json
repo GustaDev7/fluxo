@@ -34,5 +34,48 @@
     "focusNotes": ""
   },
   "notifications": [],
-  "timeEntries": []
+  "timeEntries": [],
+  "finance": {
+    "accounts": [],
+    "creditCards": [],
+    "transactions": [],
+    "bills": [],
+    "debts": [],
+    "installments": [],
+    "emergencyFund": {
+      "targetAmount": 0,
+      "currentAmount": 0,
+      "monthlyContribution": 0,
+      "targetMonths": 6
+    },
+    "goals": [],
+    "investments": [],
+    "budget": {
+      "month": "2026-09",
+      "plannedIncome": 0,
+      "allocations": {
+        "custos_fixos": 0,
+        "conforto": 0,
+        "metas": 0,
+        "prazeres": 0,
+        "liberdade_financeira": 0,
+        "conhecimento": 0
+      },
+      "notes": ""
+    },
+    "closings": [],
+    "diagnosis": {
+      "monthlyIncome": 0,
+      "isIncomeVariable": false,
+      "fixedCosts": 0,
+      "comfortCosts": 0,
+      "leisureCosts": 0,
+      "currentDebtTotal": 0,
+      "monthlyDebtPayment": 0,
+      "emergencyFundAmount": 0,
+      "currentInvested": 0,
+      "monthlyTargetInvestment": 0,
+      "mainGoals": ""
+    }
+  }
 }

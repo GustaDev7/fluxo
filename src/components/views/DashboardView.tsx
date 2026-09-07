@@ -5,7 +5,6 @@ import {
   getGreetingPT,
   getTodayDateString,
   isPastDate,
-  isToday,
 } from '../../utils/date';
 import {
   CheckCircle2,
@@ -21,12 +20,21 @@ import {
   Plus,
   SlidersHorizontal,
   Calendar,
-  Layers,
-  BookOpen,
   Repeat,
+  DollarSign,
+  Send,
+  Activity,
+  ShieldCheck,
+  Zap,
+  ArrowRight,
+  Circle,
+  TrendingUp,
 } from 'lucide-react';
-import { Task } from '../../types';
 import { isRoutineScheduledForDate, isRoutineCompletedOnDate } from '../../utils/routineUtils';
+import { useFinance } from '../../context/FinanceContext';
+import { LifeOverviewModal } from '../LifeOverviewModal';
+import { interpretLifeInput } from '../../utils/lifeOSUtils';
+import { formatBRL } from '../../utils/financeUtils';
 
 export const DashboardView: React.FC = () => {
   const {
@@ -48,13 +56,38 @@ export const DashboardView: React.FC = () => {
     startFocusTimer,
     aiGetSmartPriorities,
     isAiLoading,
+    addTask,
+    addGoal,
+    addProject,
+    activeTimer,
+    pauseFocusTimer,
+    resumeFocusTimer,
+    stopFocusTimer,
+    moveTaskStatus,
+    showToast,
   } = useApp();
+
+  const {
+    netWorthSummary,
+    zeroBasedStatus,
+    todayBills,
+    upcomingBills,
+    overdueBills,
+    healthScore,
+    addTransaction,
+    addBill,
+  } = useFinance();
 
   const [aiBriefing, setAiBriefing] = useState<{
     briefing?: string;
     suggestions?: string[];
   } | null>(null);
   const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
+  const [isLifeOverviewOpen, setIsLifeOverviewOpen] = useState(false);
+  const [lifeInputText, setLifeInputText] = useState('');
+  const [lifeFeedbackMessage, setLifeFeedbackMessage] = useState<string | null>(null);
+  const [quickTaskTitle, setQuickTaskTitle] = useState('');
+  const [taskFilter, setTaskFilter] = useState<'pending' | 'done' | 'all'>('pending');
 
   const todayStr = getTodayDateString();
 
@@ -64,10 +97,9 @@ export const DashboardView: React.FC = () => {
   const overdueTasks = tasks.filter(
     (t) => t.status !== 'done' && t.dueDate && isPastDate(t.dueDate, t.dueTime)
   );
-  const todayTasks = tasks.filter(
-    (t) => t.dueDate === todayStr && !t.isInbox
-  );
-  const activeProjects = projects.filter((p) => p.status === 'active');
+  const todayTasks = tasks.filter((t) => t.dueDate === todayStr && !t.isInbox);
+  const todayPendingTasks = todayTasks.filter((t) => t.status !== 'done');
+  const todayCompletedTasks = todayTasks.filter((t) => t.status === 'done');
   const todayEvents = events.filter((e) => e.startDate === todayStr);
 
   const todayProjectRoutines = allProjectRoutines.filter((routine) =>
@@ -80,16 +112,49 @@ export const DashboardView: React.FC = () => {
   const totalPlannedMinutes = todayTasks.reduce((acc, t) => acc + (t.estimatedDuration || 30), 0);
   const totalExecutedMinutes = todayTasks.reduce((acc, t) => acc + (t.timeSpent || 0), 0);
 
-  const completionRate =
-    tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0;
+  const habitsCompletedToday = habits.filter((h) => h.completedDates.includes(todayStr)).length;
+  const bestStreak = habits.reduce((max, h) => Math.max(max, h.currentStreak), 0);
 
-  // Smart priorities: Top 3 urgent or high priority pending tasks
+  // Top urgent or high priority pending tasks
   const smartPriorityTasks = [...pendingTasks]
     .sort((a, b) => {
       const pWeights = { urgent: 4, high: 3, medium: 2, low: 1, none: 0 };
       return pWeights[b.priority] - pWeights[a.priority];
     })
     .slice(0, 3);
+
+  // The Single Next Best Action / "O Que Fazer Agora" (Princípio #39)
+  const currentBestTask = (() => {
+    const topToday = [...todayPendingTasks].sort((a, b) => {
+      const pWeights = { urgent: 4, high: 3, medium: 2, low: 1, none: 0 };
+      return pWeights[b.priority] - pWeights[a.priority];
+    })[0];
+    if (topToday) return topToday;
+
+    if (overdueTasks.length > 0) return overdueTasks[0];
+    if (smartPriorityTasks.length > 0) return smartPriorityTasks[0];
+    return null;
+  })();
+
+  const handleRelieveOverload = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    let rescheduledCount = 0;
+    todayPendingTasks.forEach((t) => {
+      if (t.priority === 'none' || t.priority === 'low') {
+        updateTask(t.id, { dueDate: tomorrowStr });
+        rescheduledCount++;
+      }
+    });
+
+    if (rescheduledCount > 0) {
+      showToast(`${rescheduledCount} tarefa(s) secundárias adiadas para amanhã. Respire fundo!`);
+    } else {
+      showToast('Seu dia foi otimizado.');
+    }
+  };
 
   const handleRequestAiBriefing = async () => {
     const res = await aiGetSmartPriorities();
@@ -101,532 +166,781 @@ export const DashboardView: React.FC = () => {
     }
   };
 
+  const handleExecuteLifeInput = (rawText?: string) => {
+    const textToProcess = (rawText || lifeInputText).trim();
+    if (!textToProcess) return;
+
+    const lower = textToProcess.toLowerCase();
+    if (
+      lower.includes('como está minha vida') ||
+      lower.includes('diagnóstico') ||
+      lower.includes('visão 360')
+    ) {
+      setIsLifeOverviewOpen(true);
+      setLifeInputText('');
+      setLifeFeedbackMessage('Abrindo Diagnóstico 360° da Vida...');
+      setTimeout(() => setLifeFeedbackMessage(null), 4000);
+      return;
+    }
+
+    const interpreted = interpretLifeInput(textToProcess);
+
+    if (interpreted.type === 'finance' && interpreted.transaction) {
+      addTransaction({
+        amount: interpreted.transaction.amount || 42,
+        type: interpreted.transaction.type || 'expense',
+        description: interpreted.transaction.description || 'Despesa Capturada',
+        masterCategory: (interpreted.transaction.masterCategory as any) || 'conforto',
+        subcategory: interpreted.transaction.subcategory || 'Transporte',
+        date: todayStr,
+      });
+      setLifeFeedbackMessage(
+        `Transação registrada: ${formatBRL(interpreted.transaction.amount || 42)} (${interpreted.transaction.description}) no Orçamento Base Zero!`
+      );
+    } else if (interpreted.type === 'bill' && interpreted.bill) {
+      const billTitle = interpreted.bill.title || 'Conta a pagar';
+      const billAmt = interpreted.bill.amount || 240;
+      const billDue = interpreted.bill.dueDate || todayStr;
+      addBill({
+        title: billTitle,
+        amount: billAmt,
+        dueDate: billDue,
+        masterCategory: interpreted.bill.masterCategory || 'custos_fixos',
+        status: 'pending',
+        type: 'expense',
+      });
+      addTask({
+        title: `Pagar ${billTitle} (${formatBRL(billAmt)})`,
+        dueDate: billDue,
+        priority: 'urgent',
+        tags: ['financas', 'pagamento'],
+      });
+      setLifeFeedbackMessage(
+        `Conta cadastrada: ${billTitle} (${formatBRL(billAmt)}) com vencimento em ${billDue}!`
+      );
+    } else if (interpreted.type === 'goal' && interpreted.goal) {
+      addGoal({
+        title: interpreted.goal.title || 'Nova Meta',
+        targetValue: interpreted.goal.targetValue || 30000,
+        currentValue: 0,
+        deadline: interpreted.goal.deadline || '2027-12-31',
+        period: 'yearly',
+        category: 'financeira',
+        unit: 'R$',
+        linkedTaskIds: [],
+        status: 'active',
+      });
+      addProject({
+        name: `Projeto: ${interpreted.goal.title || 'Meta Financeira'}`,
+        description: `Desdobramento prático para alcançar a meta até ${interpreted.goal.deadline || '2027-12-31'}`,
+        color: '#3b82f6',
+        priority: 'high',
+        status: 'active',
+      });
+      setLifeFeedbackMessage(
+        `Meta registrada: ${interpreted.goal.title} (${formatBRL(interpreted.goal.targetValue || 30000)}) integrada a Projetos!`
+      );
+    } else {
+      addTask({
+        title: textToProcess,
+        dueDate: todayStr,
+        priority: 'high',
+        tags: ['captura-rapida'],
+      });
+      setLifeFeedbackMessage(`Demanda adicionada às tarefas de hoje: "${textToProcess}"!`);
+    }
+
+    setLifeInputText('');
+    setTimeout(() => setLifeFeedbackMessage(null), 5000);
+  };
+
+  const handleAddQuickTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickTaskTitle.trim()) return;
+    addTask({
+      title: quickTaskTitle.trim(),
+      dueDate: todayStr,
+      priority: 'medium',
+      tags: ['hoje'],
+    });
+    setQuickTaskTitle('');
+  };
+
+  const handleRescheduleAllOverdue = () => {
+    overdueTasks.forEach((t) => {
+      updateTask(t.id, { dueDate: todayStr });
+    });
+  };
+
+  // Filtered today's tasks
+  const displayedTodayTasks = todayTasks.filter((t) => {
+    if (taskFilter === 'pending') return t.status !== 'done';
+    if (taskFilter === 'done') return t.status === 'done';
+    return true;
+  });
+
   return (
     <div className="space-y-6 p-4 sm:p-8 max-w-7xl mx-auto">
-      {/* Top Greeting & Date Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* 1. Header: Clean, Warm & Focused */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-200/70 pb-5 dark:border-neutral-800">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-              {formatDatePT(todayStr, 'long')}
-            </span>
-          </div>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-neutral-900 dark:text-neutral-100 sm:text-3xl">
-            {getGreetingPT()}{user?.name?.trim() ? `, ${user.name.trim().split(' ')[0]}` : ''} 👋
+          <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+            {formatDatePT(todayStr, 'long')}
+          </span>
+          <h1 className="mt-1 text-2xl font-black tracking-tight text-neutral-900 dark:text-neutral-100 sm:text-3xl">
+            {getGreetingPT()}{user?.name?.trim() ? `, ${user.name.trim().split(' ')[0]}` : ''}
           </h1>
-          <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
-            Você tem <strong className="text-neutral-900 dark:text-neutral-100">{todayTasks.filter((t) => t.status !== 'done').length} tarefas</strong> e <strong className="text-neutral-900 dark:text-neutral-100">{todayEvents.length} compromissos</strong> agendados para hoje.
+          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            {todayPendingTasks.length > 0 ? (
+              <>
+                Você tem <strong className="text-neutral-800 dark:text-neutral-200">{todayPendingTasks.length} tarefa{todayPendingTasks.length > 1 ? 's' : ''}</strong>
+                {todayEvents.length > 0 && (
+                  <> e <strong className="text-neutral-800 dark:text-neutral-200">{todayEvents.length} compromisso{todayEvents.length > 1 ? 's' : ''}</strong></>
+                )} agendados para hoje.
+              </>
+            ) : (
+              <span>Tudo em dia com as tarefas programadas para hoje!</span>
+            )}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => setActiveTab('assistant')}
-            className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-violet-50 px-3.5 py-2 text-xs font-semibold text-indigo-700 shadow-xs hover:from-indigo-100 hover:to-violet-100 dark:border-indigo-900/60 dark:from-indigo-950/40 dark:to-violet-950/40 dark:text-indigo-300"
-            title="Abrir Assistente de Voz com Gemini"
+            onClick={() => setIsLifeOverviewOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3.5 py-2 text-xs font-semibold text-emerald-800 shadow-xs hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 transition-colors"
+            title="Diagnóstico 360° da Vida (Tempo, Finanças e Metas)"
           >
-            <Sparkles className="h-3.5 w-3.5 text-indigo-600 animate-pulse" />
-            <span>Assistente IA & Voz</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('guide')}
-            className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-2 text-xs font-semibold text-indigo-700 shadow-xs hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
-            title="Aprenda a usar o sistema (Guia & Boas Práticas)"
-          >
-            <BookOpen className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Como Usar</span>
+            <Activity className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Diagnóstico 360°</span>
           </button>
 
           <button
             onClick={() => setIsWidgetModalOpen(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-600 shadow-sm hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
-            title="Personalizar Widgets"
+            className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-600 shadow-xs hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800 transition-colors"
+            title="Personalizar seções do Dashboard"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
-            <span>Widgets</span>
+            <span className="hidden sm:inline">Widgets</span>
           </button>
 
           <button
             onClick={() => setIsQuickCaptureOpen(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 hover:bg-indigo-700"
+            className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span>Adicionar Demanda</span>
+            <span>Nova Demanda</span>
           </button>
         </div>
       </div>
 
-      {/* Metrics Row */}
+      {/* Life Feedback Banner */}
+      {lifeFeedbackMessage && (
+        <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-900 shadow-xs dark:border-emerald-900/50 dark:bg-emerald-950/60 dark:text-emerald-200 animate-in fade-in duration-200">
+          <span>{lifeFeedbackMessage}</span>
+          <button
+            onClick={() => setLifeFeedbackMessage(null)}
+            className="ml-3 text-xs text-emerald-700 hover:text-emerald-900 dark:text-emerald-400"
+          >
+            Fechar
+          </button>
+        </div>
+      )}
+
+      {/* 2. Captura Rápida Integrada (Clean Spotlight-style Input) */}
+      <div className="rounded-2xl border border-neutral-200/80 bg-neutral-50/70 p-3 sm:p-4 dark:border-neutral-800 dark:bg-neutral-900/60">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+            <Zap className="h-4 w-4" />
+          </div>
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={lifeInputText}
+              onChange={(e) => setLifeInputText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleExecuteLifeInput();
+                }
+              }}
+              placeholder="Captura Rápida: digite uma despesa, tarefa ou compromisso (ex: 'Gastei 42 no Uber', 'Pagar internet dia 10')..."
+              className="w-full rounded-xl border border-neutral-200 bg-white py-2 pl-3.5 pr-20 text-xs text-neutral-900 placeholder:text-neutral-400 shadow-2xs focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+            />
+            <button
+              onClick={() => handleExecuteLifeInput()}
+              disabled={!lifeInputText.trim()}
+              className="absolute right-1 top-1/2 -translate-y-1/2 rounded-lg bg-indigo-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+            >
+              Enviar
+            </button>
+          </div>
+        </div>
+
+        {/* Discreet Quick Examples */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 pl-0 sm:pl-10 text-[11px]">
+          <span className="text-neutral-400 font-medium">Exemplos:</span>
+          {[
+            { label: 'Uber R$ 42', text: 'Gastei 42 reais no Uber' },
+            { label: 'Conta de luz dia 10', text: 'Pagar luz 180 reais dia 10' },
+            { label: 'Revisar apresentação', text: 'Revisar apresentação com o time' },
+            { label: 'Como está minha vida?', text: 'Como está minha vida?' },
+          ].map((chip, idx) => (
+            <button
+              key={idx}
+              onClick={() => handleExecuteLifeInput(chip.text)}
+              className="rounded-md border border-neutral-200 bg-white px-2 py-0.5 text-neutral-600 hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-indigo-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300 transition-colors"
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 3. Pulso do Dia: 4 Indicadores Coesos e Alinhados */}
       {user.visibleWidgets.metrics && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+          {/* Tarefas Hoje */}
+          <div
+            onClick={() => setActiveTab('tasks')}
+            className="cursor-pointer rounded-2xl border border-neutral-200/80 bg-white p-4 shadow-2xs hover:border-indigo-300 transition-all dark:border-neutral-800 dark:bg-neutral-900"
+          >
             <div className="flex items-center justify-between text-neutral-500">
-              <span className="text-[11px] font-medium uppercase tracking-wider">Pendentes</span>
-              <Clock className="h-4 w-4 text-amber-500" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Tarefas de Hoje</span>
+              <CheckCircle2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-              {pendingTasks.length}
-            </p>
-            <p className="text-[11px] text-neutral-400">Em andamento</p>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+                {todayCompletedTasks.length}
+              </span>
+              <span className="text-xs text-neutral-400 font-medium">/ {todayTasks.length} concluídas</span>
+            </div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+              <div
+                className="h-full rounded-full bg-indigo-600 transition-all duration-300"
+                style={{
+                  width: `${todayTasks.length > 0 ? (todayCompletedTasks.length / todayTasks.length) * 100 : 0}%`,
+                }}
+              />
+            </div>
           </div>
 
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          {/* Agenda / Compromissos */}
+          <div
+            onClick={() => setActiveTab('agenda')}
+            className="cursor-pointer rounded-2xl border border-neutral-200/80 bg-white p-4 shadow-2xs hover:border-indigo-300 transition-all dark:border-neutral-800 dark:bg-neutral-900"
+          >
             <div className="flex items-center justify-between text-neutral-500">
-              <span className="text-[11px] font-medium uppercase tracking-wider">Concluídas</span>
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Agenda & Horas</span>
+              <Clock className="h-4 w-4 text-purple-600 dark:text-purple-400" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-              {completedTasks.length}
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+                {todayEvents.length}
+              </span>
+              <span className="text-xs text-neutral-400 font-medium">
+                {todayEvents.length === 1 ? 'evento hoje' : 'eventos hoje'}
+              </span>
+            </div>
+            <p className="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
+              {todayEvents[0]
+                ? `Próximo: ${todayEvents[0].startTime} • ${todayEvents[0].title}`
+                : `${(totalPlannedMinutes / 60).toFixed(1)}h de foco planejadas`}
             </p>
-            <p className="text-[11px] text-neutral-400">{completionRate}% taxa total</p>
           </div>
 
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          {/* Hábitos do Dia */}
+          <div
+            onClick={() => setActiveTab('habits')}
+            className="cursor-pointer rounded-2xl border border-neutral-200/80 bg-white p-4 shadow-2xs hover:border-orange-300 transition-all dark:border-neutral-800 dark:bg-neutral-900"
+          >
             <div className="flex items-center justify-between text-neutral-500">
-              <span className="text-[11px] font-medium uppercase tracking-wider">Atrasadas</span>
-              <AlertCircle className="h-4 w-4 text-rose-500" />
-            </div>
-            <p className="mt-2 text-2xl font-bold text-rose-600 dark:text-rose-400">
-              {overdueTasks.length}
-            </p>
-            <p className="text-[11px] text-neutral-400">Requerem ação</p>
-          </div>
-
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-            <div className="flex items-center justify-between text-neutral-500">
-              <span className="text-[11px] font-medium uppercase tracking-wider">Projetos</span>
-              <FolderKanban className="h-4 w-4 text-indigo-500" />
-            </div>
-            <p className="mt-2 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-              {activeProjects.length}
-            </p>
-            <p className="text-[11px] text-neutral-400">Projetos ativos</p>
-          </div>
-
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-            <div className="flex items-center justify-between text-neutral-500">
-              <span className="text-[11px] font-medium uppercase tracking-wider">Horas Hoje</span>
-              <Clock className="h-4 w-4 text-purple-500" />
-            </div>
-            <p className="mt-2 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-              {(totalExecutedMinutes / 60).toFixed(1)}h
-            </p>
-            <p className="text-[11px] text-neutral-400">de {(totalPlannedMinutes / 60).toFixed(1)}h planejadas</p>
-          </div>
-
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-            <div className="flex items-center justify-between text-neutral-500">
-              <span className="text-[11px] font-medium uppercase tracking-wider">Produtividade</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Hábitos Diários</span>
               <Flame className="h-4 w-4 text-orange-500" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-              {Math.min(100, Math.round((completedTasks.length / (tasks.length || 1)) * 100))}%
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+                {habitsCompletedToday}
+              </span>
+              <span className="text-xs text-neutral-400 font-medium">/ {habits.length} feitos</span>
+            </div>
+            <p className="mt-2 text-[11px] text-orange-600 dark:text-orange-400 font-semibold flex items-center gap-1">
+              <Flame className="h-3 w-3 inline" />
+              <span>Sequência máxima: {bestStreak} dias</span>
             </p>
-            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Ritmo consistente</p>
+          </div>
+
+          {/* Finanças & Margem Livre (AUVP) */}
+          <div
+            onClick={() => setActiveTab('finance')}
+            className="cursor-pointer rounded-2xl border border-neutral-200/80 bg-white p-4 shadow-2xs hover:border-emerald-300 transition-all dark:border-neutral-800 dark:bg-neutral-900"
+          >
+            <div className="flex items-center justify-between text-neutral-500">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Finanças AUVP</span>
+              <DollarSign className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 truncate">
+                {formatBRL(zeroBasedStatus.unallocated)}
+              </span>
+              <span className="text-[10px] text-neutral-400 font-medium">livre</span>
+            </div>
+            <p className="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
+              {overdueBills.length > 0 ? (
+                <span className="text-rose-600 font-bold flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3 inline text-rose-600" />
+                  <span>{overdueBills.length} conta(s) pendente(s)</span>
+                </span>
+              ) : (
+                <span>Contas em dia • Saúde {healthScore.score}/100</span>
+              )}
+            </p>
           </div>
         </div>
       )}
 
-      {/* AI Smart Priorities & Day Briefing Card */}
-      {user.visibleWidgets.smartPriorities && (
-        <div className="overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 via-white to-violet-50/50 p-5 shadow-sm dark:border-indigo-950 dark:from-neutral-900 dark:via-neutral-900 dark:to-indigo-950/30">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-100/60 pb-4 dark:border-indigo-950/60">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-600/30">
-                <Sparkles className="h-4 w-4" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                  Prioridades Inteligentes do Dia
-                </h2>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  As 3 ações de maior impacto recomendadas para hoje
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={handleRequestAiBriefing}
-              disabled={isAiLoading}
-              className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-800 dark:bg-neutral-800 dark:text-indigo-300"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>{isAiLoading ? 'Analisando...' : 'Pedir Análise à IA'}</span>
-            </button>
-          </div>
-
-          {/* AI Briefing text if loaded */}
-          {aiBriefing?.briefing && (
-            <div className="mt-3 rounded-xl border border-indigo-200/60 bg-white/80 p-3 text-xs text-neutral-700 dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-300">
-              <p className="font-medium leading-relaxed">{aiBriefing.briefing}</p>
-              {aiBriefing.suggestions && aiBriefing.suggestions.length > 0 && (
-                <ul className="mt-2 space-y-1 text-[11px] text-neutral-600 dark:text-neutral-400">
-                  {aiBriefing.suggestions.map((sug, idx) => (
-                    <li key={idx} className="flex items-center gap-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-                      <span>{sug}</span>
-                    </li>
-                  ))}
-                </ul>
+      {/* 4. Main 2-Column Work Area: Foco & Execução (Esq) vs. Contexto & Rotina (Dir) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column (7 cols): Tarefas, Prioridades e Rotinas */}
+        <div className="lg:col-span-7 space-y-5">
+          {/* Alertas Importantes (#4: Conta vencendo, Tarefa atrasada) */}
+          {(overdueBills.length > 0 || overdueTasks.length > 0) && (
+            <div className="space-y-2">
+              {overdueBills.length > 0 && (
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50/80 p-3 text-xs text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
+                  <div className="flex items-center gap-2 truncate">
+                    <DollarSign className="h-4 w-4 text-rose-600 shrink-0" />
+                    <span className="truncate">
+                      <strong>Atenção financeira:</strong> Você tem {overdueBills.length} conta(s) pendente(s).
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('finance')}
+                    className="shrink-0 font-bold text-rose-700 hover:underline dark:text-rose-300"
+                  >
+                    Resolver Contas →
+                  </button>
+                </div>
+              )}
+              {overdueTasks.length > 0 && (
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                  <div className="flex items-center gap-2 truncate">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span className="truncate">
+                      {overdueTasks.length} tarefa(s) com prazo expirado necessitando de revisão.
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('tasks')}
+                    className="shrink-0 font-bold text-amber-700 hover:underline dark:text-amber-300"
+                  >
+                    Revisar Prazos →
+                  </button>
+                </div>
               )}
             </div>
           )}
 
-          {/* Top 3 Priority Cards */}
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-            {smartPriorityTasks.map((t, index) => (
-              <div
-                key={t.id}
-                className="group relative flex flex-col justify-between rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-all hover:border-indigo-300 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900/90 dark:hover:border-indigo-900"
+          {/* Prevenção de Sobrecarga (#37) */}
+          {todayPendingTasks.length >= 6 && (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                <span>
+                  Seu dia parece cheio ({todayPendingTasks.length} tarefas pendentes). Deseja aliviar a carga?
+                </span>
+              </div>
+              <button
+                onClick={handleRelieveOverload}
+                className="shrink-0 rounded-xl bg-amber-600 px-3 py-1.5 font-bold text-white shadow-xs hover:bg-amber-700 active:scale-95 transition-all"
               >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
-                      #{index + 1}
-                    </span>
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
-                        t.priority === 'urgent'
-                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-                          : 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300'
-                      }`}
-                    >
-                      {t.priority}
-                    </span>
-                  </div>
+                Reorganizar para Amanhã
+              </button>
+            </div>
+          )}
 
-                  <h3
-                    onClick={() => setSelectedTaskId(t.id)}
-                    className="mt-2 text-xs font-bold text-neutral-900 hover:text-indigo-600 cursor-pointer dark:text-neutral-100 dark:hover:text-indigo-400 line-clamp-2"
-                  >
-                    {t.title}
-                  </h3>
-
-                  {t.dueDate && (
-                    <p className="mt-1 flex items-center gap-1 text-[11px] text-neutral-400">
-                      <Calendar className="h-3 w-3" />
-                      <span>Vence {formatDatePT(t.dueDate, 'relative')} {t.dueTime ? `às ${t.dueTime}` : ''}</span>
-                    </p>
-                  )}
+          {/* O Que Fazer Agora? (#39 e #4) */}
+          <div className="rounded-2xl border border-indigo-200/90 bg-linear-to-br from-indigo-50/70 to-purple-50/30 p-4 sm:p-5 dark:border-indigo-900/60 dark:from-indigo-950/40 dark:to-neutral-900 shadow-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xs">
+                  <Play className="h-3 w-3 fill-current ml-0.5" />
                 </div>
+                <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-950 dark:text-indigo-200">
+                  O Que Fazer Agora?
+                </h2>
+              </div>
+              {activeTimer?.isRunning && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <span>Foco em Andamento</span>
+                </span>
+              )}
+            </div>
 
-                <div className="mt-4 flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800">
+            {activeTimer?.isRunning ? (
+              <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-white p-3.5 shadow-2xs dark:bg-neutral-800/80">
+                <div>
+                  <p className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
+                    {activeTimer.taskTitle || 'Bloco de Foco sem Distrações'}
+                  </p>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    Tempo restante: {Math.floor(activeTimer.secondsRemaining / 60)}m {activeTimer.secondsRemaining % 60}s
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => startFocusTimer(t.id, t.title, 25)}
-                    className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300"
+                    onClick={pauseFocusTimer}
+                    className="rounded-xl border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700"
                   >
-                    <Play className="h-2.5 w-2.5 fill-current" />
-                    <span>Focar 25m</span>
+                    Pausar
                   </button>
-
                   <button
-                    onClick={() => updateTask(t.id, { status: 'done' })}
-                    className="flex items-center gap-1 text-[11px] font-medium text-neutral-500 hover:text-emerald-600 dark:hover:text-emerald-400"
+                    onClick={() => {
+                      if (activeTimer.taskId) moveTaskStatus(activeTimer.taskId, 'done');
+                      stopFocusTimer();
+                    }}
+                    className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                   >
-                    <Check className="h-3.5 w-3.5" />
-                    <span>Concluir</span>
+                    Concluir Foco
                   </button>
                 </div>
               </div>
-            ))}
+            ) : currentBestTask ? (
+              <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-white p-3.5 shadow-2xs dark:bg-neutral-800/80">
+                <div className="truncate">
+                  <p className="text-xs font-bold text-neutral-900 dark:text-neutral-100 truncate">
+                    {currentBestTask.title}
+                  </p>
+                  <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    <span>Estimativa: {currentBestTask.estimatedDuration || 25} min</span>
+                    {currentBestTask.dueDate && <span>• Prazo: {formatDatePT(currentBestTask.dueDate, 'relative')}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() =>
+                      startFocusTimer({
+                        taskId: currentBestTask.id,
+                        taskTitle: currentBestTask.title,
+                        durationMinutes: currentBestTask.estimatedDuration || 25,
+                      })
+                    }
+                    className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 active:scale-95 transition-all"
+                  >
+                    <Play className="h-3 w-3 fill-current" />
+                    <span>Iniciar Agora</span>
+                  </button>
+                  <button
+                    onClick={() => moveTaskStatus(currentBestTask.id, 'done')}
+                    className="rounded-xl border border-neutral-200 p-1.5 text-neutral-600 hover:border-emerald-500 hover:text-emerald-600 dark:border-neutral-700 dark:text-neutral-400 dark:hover:text-emerald-400"
+                    title="Concluir tarefa"
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      const tomorrow = new Date();
+                      tomorrow.setDate(tomorrow.getDate() + 1);
+                      updateTask(currentBestTask.id, { dueDate: tomorrow.toISOString().split('T')[0] });
+                      showToast('Tarefa adiada para amanhã');
+                    }}
+                    className="rounded-xl border border-neutral-200 px-2.5 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700"
+                    title="Adiar para amanhã"
+                  >
+                    Adiar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 flex items-center justify-between rounded-xl bg-white/80 p-3 text-xs text-neutral-600 dark:bg-neutral-800/60 dark:text-neutral-400">
+                <span>Tudo em dia para este momento! Nenhuma prioridade imediata.</span>
+                <button
+                  onClick={() => setIsQuickCaptureOpen(true)}
+                  className="font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                >
+                  + Nova demanda
+                </button>
+              </div>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* Main Grid: Today's Tasks & Today's Schedule */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Today's Tasks (2 cols) */}
-        <div className="lg:col-span-2 space-y-6">
-          {user.visibleWidgets.todayTasks && (
-            <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          {/* Prioridades em Destaque (Smart Priorities) */}
+          {user.visibleWidgets.smartPriorities && smartPriorityTasks.length > 0 && (
+            <div className="rounded-2xl border border-indigo-100 bg-white p-4 sm:p-5 shadow-2xs dark:border-indigo-950/70 dark:bg-neutral-900">
               <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                  <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                    Tarefas do Dia ({todayTasks.filter((t) => t.status === 'done').length}/{todayTasks.length})
+                  <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-900 dark:text-neutral-100">
+                    Prioridades em Destaque
                   </h2>
                 </div>
 
                 <button
-                  onClick={() => setActiveTab('tasks')}
-                  className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                  onClick={handleRequestAiBriefing}
+                  disabled={isAiLoading}
+                  className="flex items-center gap-1 rounded-lg text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-50 dark:text-indigo-400"
                 >
-                  <span>Ver todas</span>
-                  <ArrowUpRight className="h-3.5 w-3.5" />
+                  <Sparkles className="h-3 w-3" />
+                  <span>{isAiLoading ? 'Analisando...' : 'Análise IA'}</span>
                 </button>
               </div>
 
-              <div className="mt-3 space-y-2">
-                {todayTasks.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-neutral-400">
-                    Nenhuma tarefa agendada especificamente para hoje.
-                  </div>
-                ) : (
-                  todayTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className={`group flex items-center justify-between rounded-xl border p-3 transition-all ${
-                        task.status === 'done'
-                          ? 'border-neutral-100 bg-neutral-50/50 opacity-60 dark:border-neutral-800/40 dark:bg-neutral-800/20'
-                          : 'border-neutral-200/80 bg-white hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 truncate">
-                        <button
-                          onClick={() => updateTask(task.id, { status: task.status === 'done' ? 'todo' : 'done' })}
-                          className="text-neutral-400 hover:text-emerald-500"
-                        >
-                          {task.status === 'done' ? (
-                            <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-                          ) : (
-                            <div className="h-5 w-5 rounded-full border border-neutral-300 dark:border-neutral-700" />
-                          )}
-                        </button>
-
-                        <div className="truncate">
-                          <p
-                            onClick={() => setSelectedTaskId(task.id)}
-                            className={`cursor-pointer text-xs font-semibold ${
-                              task.status === 'done'
-                                ? 'line-through text-neutral-400'
-                                : 'text-neutral-900 hover:text-indigo-600 dark:text-neutral-100 dark:hover:text-indigo-400'
-                            }`}
-                          >
-                            {task.title}
-                          </p>
-                          <div className="flex items-center gap-2 text-[11px] text-neutral-400 mt-0.5">
-                            {task.dueTime && <span>🕒 {task.dueTime}</span>}
-                            {task.tags.map((t) => (
-                              <span key={t}>#{t}</span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {task.status !== 'done' && (
-                          <button
-                            onClick={() => startFocusTimer(task.id, task.title, 25)}
-                            className="rounded-lg p-1.5 text-neutral-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/60"
-                            title="Focar nesta tarefa"
-                          >
-                            <Play className="h-3.5 w-3.5 fill-current" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Overdue alert if any */}
-          {user.visibleWidgets.overdueTasks && overdueTasks.length > 0 && (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-5 shadow-sm dark:border-rose-950 dark:bg-rose-950/20">
-              <div className="flex items-center justify-between border-b border-rose-200/60 pb-3 dark:border-rose-900/40">
-                <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400">
-                  <AlertCircle className="h-4 w-4" />
-                  <h2 className="text-sm font-bold">Tarefas Atrasadas ({overdueTasks.length})</h2>
+              {/* AI Briefing if generated */}
+              {aiBriefing?.briefing && (
+                <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 text-xs text-neutral-700 dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-300">
+                  <p className="font-medium leading-relaxed">{aiBriefing.briefing}</p>
                 </div>
-              </div>
+              )}
+
+              {/* Priority Tasks Cards */}
               <div className="mt-3 space-y-2">
-                {overdueTasks.slice(0, 3).map((task) => (
+                {smartPriorityTasks.map((task, idx) => (
                   <div
                     key={task.id}
-                    className="flex items-center justify-between rounded-xl border border-rose-200/80 bg-white p-3 text-xs dark:border-rose-900/60 dark:bg-neutral-900"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-neutral-100 bg-neutral-50/50 p-3 hover:border-neutral-200 dark:border-neutral-800/80 dark:bg-neutral-800/30 transition-all"
                   >
-                    <div>
-                      <p
-                        onClick={() => setSelectedTaskId(task.id)}
-                        className="font-bold text-neutral-900 hover:underline cursor-pointer dark:text-neutral-100"
-                      >
-                        {task.title}
-                      </p>
-                      <span className="text-[10px] text-rose-600 dark:text-rose-400">
-                        Venceu em {formatDatePT(task.dueDate)}
+                    <div className="flex items-center gap-3 truncate">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
+                        {idx + 1}
                       </span>
+                      <div className="truncate">
+                        <p
+                          onClick={() => setSelectedTaskId(task.id)}
+                          className="cursor-pointer text-xs font-bold text-neutral-900 hover:text-indigo-600 dark:text-neutral-100 dark:hover:text-indigo-400 truncate"
+                        >
+                          {task.title}
+                        </p>
+                        <div className="flex items-center gap-2 text-[10px] text-neutral-400 mt-0.5">
+                          <span
+                            className={`font-semibold uppercase ${
+                              task.priority === 'urgent' ? 'text-rose-600' : 'text-amber-600'
+                            }`}
+                          >
+                            {task.priority === 'urgent' ? 'Urgente' : 'Alta prioridade'}
+                          </span>
+                          {task.dueDate && <span>• Vence {formatDatePT(task.dueDate, 'relative')}</span>}
+                        </div>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => updateTask(task.id, { dueDate: todayStr })}
-                      className="rounded-lg bg-rose-100 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-200 dark:bg-rose-900/60 dark:text-rose-200"
-                    >
-                      Mover para hoje
-                    </button>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => startFocusTimer(task.id, task.title, 25)}
+                        className="flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-indigo-700 border border-neutral-200 shadow-2xs hover:bg-indigo-50 dark:bg-neutral-800 dark:border-neutral-700 dark:text-indigo-300"
+                        title="Iniciar Pomodoro de 25 min"
+                      >
+                        <Play className="h-2.5 w-2.5 fill-current" />
+                        <span>Focar</span>
+                      </button>
+
+                      <button
+                        onClick={() => updateTask(task.id, { status: 'done' })}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 dark:bg-neutral-800 dark:border-neutral-700 dark:hover:text-emerald-400 transition-colors"
+                        title="Marcar como concluída"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Goals Progress Widget */}
-          {user.visibleWidgets.goals && (
-            <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-              <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+          {/* Tarefas de Hoje (Today's Tasks List) */}
+          {user.visibleWidgets.todayTasks && (
+            <div className="rounded-2xl border border-neutral-200/80 bg-white p-4 sm:p-5 shadow-2xs dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-3.5 dark:border-neutral-800">
                 <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                  <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">Progresso das Metas</h2>
+                  <CheckCircle2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                    Tarefas de Hoje
+                  </h2>
+                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-bold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                    {todayPendingTasks.length} pendente{todayPendingTasks.length !== 1 ? 's' : ''}
+                  </span>
                 </div>
-                <button
-                  onClick={() => setActiveTab('goals')}
-                  className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
-                >
-                  <span>Ver todas</span>
-                  <ArrowUpRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
 
-              <div className="mt-3 space-y-4">
-                {goals.slice(0, 3).map((goal) => {
-                  const percent = Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
-                  return (
-                    <div key={goal.id} className="space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-neutral-800 dark:text-neutral-200">{goal.title}</span>
-                        <span className="text-[11px] font-bold text-neutral-500">
-                          {goal.currentValue} / {goal.targetValue} {goal.unit} ({percent}%)
-                        </span>
-                      </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 transition-all duration-500"
-                          style={{ width: `${percent}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Column: Schedule & Habits (1 col) */}
-        <div className="space-y-6">
-          {/* Today's Schedule / Events */}
-          {user.visibleWidgets.upcomingEvents && (
-            <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-              <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
                 <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                  <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">Agenda de Hoje</h2>
-                </div>
-                <button
-                  onClick={() => setActiveTab('agenda')}
-                  className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
-                >
-                  <span>Agenda completa</span>
-                  <ArrowUpRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
-
-              <div className="mt-3 space-y-2.5">
-                {todayEvents.length === 0 ? (
-                  <p className="py-6 text-center text-xs text-neutral-400">Sem compromissos agendados hoje.</p>
-                ) : (
-                  todayEvents.map((evt) => (
-                    <div
-                      key={evt.id}
-                      className="rounded-xl border border-neutral-100 bg-neutral-50/60 p-3 text-xs dark:border-neutral-800 dark:bg-neutral-800/40"
+                  {/* Task Filter Tabs */}
+                  <div className="flex rounded-lg bg-neutral-100 p-0.5 text-[11px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                    <button
+                      onClick={() => setTaskFilter('pending')}
+                      className={`rounded-md px-2.5 py-0.5 transition-colors ${
+                        taskFilter === 'pending'
+                          ? 'bg-white font-bold text-neutral-900 shadow-2xs dark:bg-neutral-700 dark:text-neutral-100'
+                          : 'hover:text-neutral-900 dark:hover:text-neutral-200'
+                      }`}
                     >
-                      <div className="flex items-center justify-between font-semibold">
-                        <span className="text-neutral-900 dark:text-neutral-100 truncate">{evt.title}</span>
-                        <span className="text-[11px] text-indigo-600 dark:text-indigo-400 shrink-0 font-mono">
-                          {evt.startTime} - {evt.endTime}
-                        </span>
+                      Pendentes
+                    </button>
+                    <button
+                      onClick={() => setTaskFilter('done')}
+                      className={`rounded-md px-2.5 py-0.5 transition-colors ${
+                        taskFilter === 'done'
+                          ? 'bg-white font-bold text-neutral-900 shadow-2xs dark:bg-neutral-700 dark:text-neutral-100'
+                          : 'hover:text-neutral-900 dark:hover:text-neutral-200'
+                      }`}
+                    >
+                      Feitas ({todayCompletedTasks.length})
+                    </button>
+                    <button
+                      onClick={() => setTaskFilter('all')}
+                      className={`rounded-md px-2.5 py-0.5 transition-colors ${
+                        taskFilter === 'all'
+                          ? 'bg-white font-bold text-neutral-900 shadow-2xs dark:bg-neutral-700 dark:text-neutral-100'
+                          : 'hover:text-neutral-900 dark:hover:text-neutral-200'
+                      }`}
+                    >
+                      Todas
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => setActiveTab('tasks')}
+                    className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                    title="Ver quadro completo de tarefas"
+                  >
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Overdue alert banner if any */}
+              {user.visibleWidgets.overdueTasks && overdueTasks.length > 0 && (
+                <div className="mt-3 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs dark:border-amber-950/60 dark:bg-amber-950/20">
+                  <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span>
+                      Você tem <strong>{overdueTasks.length} tarefa{overdueTasks.length > 1 ? 's' : ''}</strong> de dias anteriores não concluída{overdueTasks.length > 1 ? 's' : ''}.
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleRescheduleAllOverdue}
+                    className="whitespace-nowrap rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-2xs hover:bg-amber-700 transition-colors"
+                  >
+                    Mover para hoje
+                  </button>
+                </div>
+              )}
+
+              {/* Quick inline task add */}
+              <form onSubmit={handleAddQuickTask} className="mt-3 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={quickTaskTitle}
+                  onChange={(e) => setQuickTaskTitle(e.target.value)}
+                  placeholder="+ Adicionar tarefa rápida para hoje (Pressione Enter)..."
+                  className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3.5 py-2 text-xs text-neutral-900 placeholder:text-neutral-400 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-100"
+                />
+                <button
+                  type="submit"
+                  disabled={!quickTaskTitle.trim()}
+                  className="rounded-xl bg-neutral-900 px-3 py-2 text-xs font-semibold text-white hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 transition-colors"
+                >
+                  Adicionar
+                </button>
+              </form>
+
+              {/* Task Items List */}
+              <div className="mt-3 space-y-1.5">
+                {displayedTodayTasks.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-neutral-400">
+                    {taskFilter === 'pending'
+                      ? 'Nenhuma tarefa pendente para hoje. Parabéns!'
+                      : 'Nenhuma tarefa encontrada neste filtro.'}
+                  </div>
+                ) : (
+                  displayedTodayTasks.map((task) => {
+                    const isDone = task.status === 'done';
+                    return (
+                      <div
+                        key={task.id}
+                        className={`group flex items-center justify-between gap-3 rounded-xl border p-2.5 transition-all ${
+                          isDone
+                            ? 'border-neutral-100 bg-neutral-50/40 opacity-60 dark:border-neutral-800/40 dark:bg-neutral-800/20'
+                            : 'border-neutral-200/70 bg-white hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 truncate">
+                          <button
+                            onClick={() =>
+                              updateTask(task.id, { status: isDone ? 'todo' : 'done' })
+                            }
+                            className="text-neutral-400 hover:text-emerald-500 shrink-0 transition-colors"
+                          >
+                            {isDone ? (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                            ) : (
+                              <Circle className="h-4 w-4" />
+                            )}
+                          </button>
+
+                          <div className="truncate">
+                            <span
+                              onClick={() => setSelectedTaskId(task.id)}
+                              className={`cursor-pointer text-xs font-semibold ${
+                                isDone
+                                  ? 'line-through text-neutral-400'
+                                  : 'text-neutral-900 hover:text-indigo-600 dark:text-neutral-100 dark:hover:text-indigo-400'
+                              }`}
+                            >
+                              {task.title}
+                            </span>
+                            <div className="flex items-center gap-2 text-[10px] text-neutral-400 mt-0.5">
+                              {task.dueTime && (
+                                <span className="flex items-center gap-0.5">
+                                  <Clock className="h-2.5 w-2.5 inline" />
+                                  <span>{task.dueTime}</span>
+                                </span>
+                              )}
+                              {task.tags && task.tags.length > 0 && (
+                                <span>#{task.tags[0]}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {!isDone && (
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => startFocusTimer(task.id, task.title, 25)}
+                              className="rounded-lg p-1 text-neutral-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/60"
+                              title="Focar 25 min"
+                            >
+                              <Play className="h-3 w-3 fill-current" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      {evt.location && (
-                        <p className="mt-1 text-[11px] text-neutral-500">{evt.location}</p>
-                      )}
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
           )}
 
-          {/* Daily Habits Checklist */}
-          {user.visibleWidgets.habits && (
-            <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          {/* Rotinas Recorrentes dos Projetos */}
+          {todayProjectRoutines.length > 0 && (
+            <div className="rounded-2xl border border-neutral-200/80 bg-white p-4 sm:p-5 shadow-2xs dark:border-neutral-800 dark:bg-neutral-900">
               <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
                 <div className="flex items-center gap-2">
-                  <Flame className="h-4 w-4 text-orange-500" />
-                  <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">Hábitos do Dia</h2>
+                  <Repeat className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-900 dark:text-neutral-100">
+                    Rotinas dos Projetos ({completedTodayRoutines.length}/{todayProjectRoutines.length})
+                  </h2>
                 </div>
                 <button
-                  onClick={() => setActiveTab('habits')}
+                  onClick={() => setActiveTab('projects')}
                   className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
                 >
-                  <span>Ver todos</span>
-                  <ArrowUpRight className="h-3.5 w-3.5" />
+                  <span>Ver Projetos</span>
+                  <ArrowUpRight className="h-3 w-3" />
                 </button>
               </div>
 
               <div className="mt-3 space-y-2">
-                {habits.map((habit) => {
-                  const isDoneToday = habit.completedDates.includes(todayStr);
-                  return (
-                    <div
-                      key={habit.id}
-                      className="flex items-center justify-between rounded-xl border border-neutral-100 bg-neutral-50/50 p-2.5 text-xs dark:border-neutral-800 dark:bg-neutral-800/30"
-                    >
-                      <div className="flex items-center gap-2.5 truncate">
-                        <button
-                          onClick={() => toggleHabitDay(habit.id, todayStr)}
-                          className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${
-                            isDoneToday
-                              ? 'bg-emerald-500 text-white'
-                              : 'border border-neutral-300 bg-white text-transparent dark:border-neutral-700 dark:bg-neutral-800'
-                          }`}
-                        >
-                          <Check className="h-3.5 w-3.5 stroke-[3]" />
-                        </button>
-                        <span
-                          className={`truncate font-medium ${
-                            isDoneToday ? 'line-through text-neutral-400' : 'text-neutral-800 dark:text-neutral-200'
-                          }`}
-                        >
-                          {habit.name}
-                        </span>
-                      </div>
-
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-orange-600 dark:text-orange-400">
-                        <Flame className="h-3 w-3" />
-                        {habit.currentStreak}d
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Project Routines Widget */}
-          <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
-              <div className="flex items-center gap-2">
-                <Repeat className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                  Rotinas dos Projetos ({completedTodayRoutines.length}/{todayProjectRoutines.length})
-                </h2>
-              </div>
-              <button
-                onClick={() => setActiveTab('projects')}
-                className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
-              >
-                <span>Ver Projetos</span>
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            <div className="mt-3 space-y-2">
-              {todayProjectRoutines.length === 0 ? (
-                <p className="py-6 text-center text-xs text-neutral-400">
-                  Nenhuma rotina recorrente de projeto agendada para hoje.
-                </p>
-              ) : (
-                todayProjectRoutines.map((routine) => {
+                {todayProjectRoutines.map((routine) => {
                   const isDone = isRoutineCompletedOnDate(routine, todayStr);
                   return (
                     <div
@@ -636,22 +950,21 @@ export const DashboardView: React.FC = () => {
                       <div className="flex items-center gap-2.5 truncate">
                         <button
                           onClick={() => toggleProjectRoutine(routine.projectId, routine.id, todayStr)}
-                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-lg transition-colors ${
                             isDone
                               ? 'bg-emerald-500 text-white'
                               : 'border border-neutral-300 bg-white text-transparent hover:border-indigo-400 dark:border-neutral-700 dark:bg-neutral-800'
                           }`}
-                          title={isDone ? 'Concluída hoje' : 'Marcar como concluída hoje'}
                         >
-                          <Check className="h-3.5 w-3.5 stroke-[3]" />
+                          <Check className="h-3 w-3 stroke-[3]" />
                         </button>
                         <div className="truncate">
                           <div className="flex items-center gap-1.5 truncate">
                             <span
-                              className="rounded-md px-1.5 py-0.2 text-[9px] font-extrabold uppercase shrink-0 border"
+                              className="rounded px-1.5 py-0.2 text-[9px] font-extrabold uppercase shrink-0 border"
                               style={{
-                                backgroundColor: `${routine.projectColor}20`,
-                                borderColor: `${routine.projectColor}50`,
+                                backgroundColor: `${routine.projectColor}15`,
+                                borderColor: `${routine.projectColor}40`,
                                 color: routine.projectColor,
                               }}
                             >
@@ -667,8 +980,8 @@ export const DashboardView: React.FC = () => {
                               {routine.title}
                             </span>
                           </div>
-                          <p className="text-[10px] text-neutral-400 font-mono mt-0.5">
-                            {routine.preferredTime || 'Horário flexível'} • Rotina {routine.frequency === 'daily' ? 'Diária' : 'Periódica'}
+                          <p className="text-[10px] text-neutral-400 mt-0.5">
+                            {routine.preferredTime || 'Horário flexível'}
                           </p>
                         </div>
                       </div>
@@ -678,15 +991,204 @@ export const DashboardView: React.FC = () => {
                           setSelectedProjectId(routine.projectId);
                           setActiveTab('projects');
                         }}
-                        className="p-1 text-neutral-400 hover:text-indigo-600 rounded-md shrink-0 transition-colors"
+                        className="p-1 text-neutral-400 hover:text-indigo-600 rounded shrink-0 transition-colors"
                         title="Abrir no Projeto"
                       >
                         <FolderKanban className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   );
-                })
-              )}
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right Column (5 cols): Agenda, Hábitos, Metas & Finanças */}
+        <div className="lg:col-span-5 space-y-5">
+          {/* Agenda de Hoje */}
+          {user.visibleWidgets.upcomingEvents && (
+            <div className="rounded-2xl border border-neutral-200/80 bg-white p-4 sm:p-5 shadow-2xs dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-900 dark:text-neutral-100">
+                    Agenda do Dia
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setActiveTab('agenda')}
+                  className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                >
+                  <span>Abrir Agenda</span>
+                  <ArrowUpRight className="h-3 w-3" />
+                </button>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {todayEvents.length === 0 ? (
+                  <p className="py-5 text-center text-xs text-neutral-400">
+                    Nenhum compromisso na agenda hoje.
+                  </p>
+                ) : (
+                  todayEvents.map((evt) => (
+                    <div
+                      key={evt.id}
+                      className="rounded-xl border border-neutral-100 bg-neutral-50/70 p-2.5 text-xs dark:border-neutral-800 dark:bg-neutral-800/40"
+                    >
+                      <div className="flex items-center justify-between font-semibold">
+                        <span className="text-neutral-900 dark:text-neutral-100 truncate">{evt.title}</span>
+                        <span className="text-[11px] text-indigo-600 dark:text-indigo-400 shrink-0 font-mono">
+                          {evt.startTime} - {evt.endTime}
+                        </span>
+                      </div>
+                      {evt.location && (
+                        <p className="mt-0.5 text-[10px] text-neutral-400 truncate">{evt.location}</p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Hábitos Diários */}
+          {user.visibleWidgets.habits && habits.length > 0 && (
+            <div className="rounded-2xl border border-neutral-200/80 bg-white p-4 sm:p-5 shadow-2xs dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+                <div className="flex items-center gap-2">
+                  <Flame className="h-4 w-4 text-orange-500" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-900 dark:text-neutral-100">
+                    Hábitos ({habitsCompletedToday}/{habits.length})
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setActiveTab('habits')}
+                  className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                >
+                  <span>Ver todos</span>
+                  <ArrowUpRight className="h-3 w-3" />
+                </button>
+              </div>
+
+              <div className="mt-3 space-y-1.5">
+                {habits.slice(0, 5).map((habit) => {
+                  const isDoneToday = habit.completedDates.includes(todayStr);
+                  return (
+                    <div
+                      key={habit.id}
+                      className="flex items-center justify-between rounded-xl border border-neutral-100 bg-neutral-50/50 p-2 text-xs dark:border-neutral-800 dark:bg-neutral-800/30"
+                    >
+                      <div className="flex items-center gap-2.5 truncate">
+                        <button
+                          onClick={() => toggleHabitDay(habit.id, todayStr)}
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                            isDoneToday
+                              ? 'bg-emerald-500 text-white'
+                              : 'border border-neutral-300 bg-white text-transparent dark:border-neutral-700 dark:bg-neutral-800'
+                          }`}
+                        >
+                          <Check className="h-3 w-3 stroke-[3]" />
+                        </button>
+                        <span
+                          className={`truncate font-medium ${
+                            isDoneToday
+                              ? 'line-through text-neutral-400'
+                              : 'text-neutral-800 dark:text-neutral-200'
+                          }`}
+                        >
+                          {habit.name}
+                        </span>
+                      </div>
+
+                      <span className="flex items-center gap-0.5 text-[10px] font-bold text-orange-600 dark:text-orange-400">
+                        <Flame className="h-3 w-3" />
+                        {habit.currentStreak}d
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Metas em Andamento */}
+          {user.visibleWidgets.goals && goals.length > 0 && (
+            <div className="rounded-2xl border border-neutral-200/80 bg-white p-4 sm:p-5 shadow-2xs dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-900 dark:text-neutral-100">
+                    Metas Principais
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setActiveTab('goals')}
+                  className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                >
+                  <span>Metas</span>
+                  <ArrowUpRight className="h-3 w-3" />
+                </button>
+              </div>
+
+              <div className="mt-3 space-y-3">
+                {goals.slice(0, 2).map((goal) => {
+                  const percent = Math.min(
+                    100,
+                    Math.round((goal.currentValue / (goal.targetValue || 1)) * 100)
+                  );
+                  return (
+                    <div key={goal.id} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate">
+                          {goal.title}
+                        </span>
+                        <span className="text-[11px] font-bold text-neutral-500 shrink-0">
+                          {percent}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+                        <div
+                          className="h-full rounded-full bg-indigo-600 transition-all duration-300"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Card Resumo 360° da Vida & Finanças AUVP */}
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 dark:border-emerald-950/60 dark:bg-emerald-950/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
+                  Blindagem & Finanças AUVP
+                </span>
+              </div>
+              <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">
+                Score {healthScore.score}/100
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+              Patrimônio Líquido de <strong>{formatBRL(netWorthSummary.netWorth)}</strong>.
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={() => setActiveTab('finance')}
+                className="flex-1 rounded-xl bg-emerald-600 py-1.5 text-center text-xs font-bold text-white shadow-2xs hover:bg-emerald-700 transition-colors"
+              >
+                Abrir Finanças
+              </button>
+              <button
+                onClick={() => setIsLifeOverviewOpen(true)}
+                className="rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-neutral-800 dark:text-emerald-300 transition-colors"
+              >
+                Visão 360°
+              </button>
             </div>
           </div>
         </div>
@@ -694,19 +1196,19 @@ export const DashboardView: React.FC = () => {
 
       {/* Customize Widgets Modal */}
       {isWidgetModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
             <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-              Personalizar Widgets do Dashboard
+              Personalizar Seções do Dashboard
             </h3>
             <p className="mt-1 text-xs text-neutral-500">
-              Escolha quais seções deseja visualizar na sua tela inicial:
+              Escolha quais seções você deseja ver na tela inicial:
             </p>
 
             <div className="mt-4 space-y-2.5">
               {[
-                { key: 'metrics', label: 'Cards de Indicadores de Produtividade' },
-                { key: 'smartPriorities', label: 'Prioridades Inteligentes & Análise de IA' },
+                { key: 'metrics', label: 'Cards de Indicadores de Produtividade & Finanças' },
+                { key: 'smartPriorities', label: 'Prioridades em Destaque & Análise de IA' },
                 { key: 'todayTasks', label: 'Tarefas de Hoje' },
                 { key: 'overdueTasks', label: 'Alerta de Tarefas Atrasadas' },
                 { key: 'upcomingEvents', label: 'Agenda & Eventos do Dia' },
@@ -718,7 +1220,7 @@ export const DashboardView: React.FC = () => {
                 return (
                   <label
                     key={key}
-                    className="flex items-center justify-between rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-xs font-medium dark:border-neutral-800 dark:bg-neutral-800"
+                    className="flex items-center justify-between rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-xs font-medium dark:border-neutral-800 dark:bg-neutral-800/60"
                   >
                     <span className="text-neutral-800 dark:text-neutral-200">{label}</span>
                     <input
@@ -734,13 +1236,19 @@ export const DashboardView: React.FC = () => {
 
             <button
               onClick={() => setIsWidgetModalOpen(false)}
-              className="mt-5 w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
+              className="mt-5 w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white shadow-2xs hover:bg-indigo-700"
             >
-              Salvar Preferências
+              Concluir
             </button>
           </div>
         </div>
       )}
+
+      {/* 360° Life Overview Modal */}
+      <LifeOverviewModal
+        isOpen={isLifeOverviewOpen}
+        onClose={() => setIsLifeOverviewOpen(false)}
+      />
     </div>
   );
 };

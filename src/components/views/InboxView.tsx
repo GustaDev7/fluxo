@@ -136,7 +136,7 @@ export const InboxView: React.FC = () => {
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
               <CheckCircle2 className="h-6 w-6" />
             </div>
-            <h3 className="mt-3 text-sm font-bold text-neutral-900 dark:text-neutral-100">Inbox Zero! 🎉</h3>
+            <h3 className="mt-3 text-sm font-bold text-neutral-900 dark:text-neutral-100">Inbox Zero!</h3>
             <p className="mt-1 text-xs text-neutral-500 max-w-sm mx-auto">
               Todas as demandas da sua caixa de entrada já foram triadas, organizadas ou concluídas.
             </p>

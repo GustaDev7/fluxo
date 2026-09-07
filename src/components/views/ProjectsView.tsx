@@ -30,6 +30,7 @@ import {
   Layers,
   Link as LinkIcon,
   StickyNote,
+  Zap,
 } from 'lucide-react';
 import { Project, TaskStatus, Priority, NotePage } from '../../types';
 import { formatDatePT, getTodayDateString } from '../../utils/date';
@@ -70,6 +71,7 @@ export const ProjectsView: React.FC = () => {
 
   // Navigation inside project
   const [projectSubTab, setProjectSubTab] = useState<'workspace' | 'tasks' | 'kanban' | 'notes' | 'timeline'>('workspace');
+  const [mobileKanbanFilter, setMobileKanbanFilter] = useState<TaskStatus | 'all'>('all');
 
   // Main filter for projects list
   const [filterType, setFilterType] = useState<'all' | 'recurring' | 'fixed'>('all');
@@ -1102,18 +1104,20 @@ export const ProjectsView: React.FC = () => {
                           {/* Sync Badges */}
                           {routine.syncToCalendar !== false && (
                             <span
-                              className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/50 dark:border-blue-900/50"
+                              className="flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/50 dark:border-blue-900/50"
                               title="Sincronizado na Agenda diária e no Calendário"
                             >
-                              📅 Calendário & Agenda
+                              <Calendar className="h-2.5 w-2.5" />
+                              <span>Calendário & Agenda</span>
                             </span>
                           )}
                           {routine.syncToHabits !== false && (
                             <span
-                              className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-900/50"
+                              className="flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-900/50"
                               title="Sincronizado na Central de Rotinas & Hábitos"
                             >
-                              ⚡ Rotinas Centrais
+                              <Zap className="h-2.5 w-2.5" />
+                              <span>Rotinas Centrais</span>
                             </span>
                           )}
 
@@ -1565,58 +1569,118 @@ export const ProjectsView: React.FC = () => {
 
       {/* ================= SUB-TAB 3: KANBAN ================= */}
       {projectSubTab === 'kanban' && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 overflow-x-auto pb-4">
-          {(['backlog', 'todo', 'in_progress', 'done'] as TaskStatus[]).map((statusKey) => {
-            const colTasks = projectTasks.filter((t) => t.status === statusKey);
-            const titles: Record<string, string> = {
-              backlog: 'Backlog',
-              todo: 'A Fazer',
-              in_progress: 'Em Andamento',
-              done: 'Concluído',
-            };
+        <div className="space-y-3">
+          {/* Mobile column switch pills */}
+          <div className="flex md:hidden items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none">
+            <button
+              onClick={() => setMobileKanbanFilter('all')}
+              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all whitespace-nowrap ${
+                mobileKanbanFilter === 'all'
+                  ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 shadow-xs'
+                  : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
+              }`}
+            >
+              Todas ({projectTasks.length})
+            </button>
+            {(['backlog', 'todo', 'in_progress', 'done'] as TaskStatus[]).map((st) => {
+              const count = projectTasks.filter((t) => t.status === st).length;
+              const names: Record<string, string> = {
+                backlog: 'Backlog',
+                todo: 'A Fazer',
+                in_progress: 'Em Andamento',
+                done: 'Concluído',
+              };
+              return (
+                <button
+                  key={st}
+                  onClick={() => setMobileKanbanFilter(st)}
+                  className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all whitespace-nowrap ${
+                    mobileKanbanFilter === st
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
+                  }`}
+                >
+                  {names[st]} ({count})
+                </button>
+              );
+            })}
+          </div>
 
-            return (
-              <div
-                key={statusKey}
-                className="rounded-2xl border border-neutral-200 bg-neutral-50/70 p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/60 min-w-[240px]"
-              >
-                <div className="flex items-center justify-between pb-2 border-b border-neutral-200 dark:border-neutral-800">
-                  <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                    {titles[statusKey]}
-                  </span>
-                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
-                    {colTasks.length}
-                  </span>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 overflow-x-auto pb-4">
+            {(['backlog', 'todo', 'in_progress', 'done'] as TaskStatus[])
+              .filter((st) => mobileKanbanFilter === 'all' || mobileKanbanFilter === st)
+              .map((statusKey) => {
+                const colTasks = projectTasks.filter((t) => t.status === statusKey);
+                const titles: Record<string, string> = {
+                  backlog: 'Backlog',
+                  todo: 'A Fazer',
+                  in_progress: 'Em Andamento',
+                  done: 'Concluído',
+                };
 
-                <div className="mt-3 space-y-2">
-                  {colTasks.map((t) => (
-                    <div
-                      key={t.id}
-                      onClick={() => setSelectedTaskId(t.id)}
-                      className="rounded-xl border border-neutral-200 bg-white p-3 text-xs shadow-xs cursor-pointer hover:border-indigo-300 dark:border-neutral-800 dark:bg-neutral-900 transition-all"
-                    >
-                      <p className="font-bold text-neutral-900 dark:text-neutral-100">{t.title}</p>
-                      <div className="mt-2 flex items-center justify-between text-[10px] text-neutral-400">
-                        <span>{t.priority !== 'none' ? t.priority : ''}</span>
-                        <select
-                          value={t.status}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => moveTaskStatus(t.id, e.target.value as TaskStatus)}
-                          className="bg-transparent text-[10px] text-neutral-500 outline-none cursor-pointer"
-                        >
-                          <option value="backlog">Backlog</option>
-                          <option value="todo">A Fazer</option>
-                          <option value="in_progress">Andamento</option>
-                          <option value="done">Concluído</option>
-                        </select>
-                      </div>
+                return (
+                  <div
+                    key={statusKey}
+                    className="rounded-2xl border border-neutral-200 bg-neutral-50/70 p-3.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/60 min-w-[240px]"
+                  >
+                    <div className="flex items-center justify-between pb-2 border-b border-neutral-200 dark:border-neutral-800">
+                      <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
+                        {titles[statusKey]}
+                      </span>
+                      <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                        {colTasks.length}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+
+                    <div className="mt-3 space-y-2.5">
+                      {colTasks.length === 0 ? (
+                        <div className="py-6 text-center text-xs text-neutral-400">
+                          Nenhuma tarefa nesta coluna
+                        </div>
+                      ) : (
+                        colTasks.map((t) => (
+                          <div
+                            key={t.id}
+                            onClick={() => setSelectedTaskId(t.id)}
+                            className="rounded-xl border border-neutral-200 bg-white p-3 text-xs shadow-xs cursor-pointer hover:border-indigo-300 dark:border-neutral-800 dark:bg-neutral-900 transition-all"
+                          >
+                            <p className="font-bold text-neutral-900 dark:text-neutral-100 leading-snug">{t.title}</p>
+                            <div className="mt-2.5 flex items-center justify-between gap-2 text-[10px] text-neutral-400 pt-2 border-t border-neutral-100 dark:border-neutral-800/80">
+                              {t.priority !== 'none' ? (
+                                <span className={`font-semibold capitalize ${
+                                  t.priority === 'urgent'
+                                    ? 'text-rose-600 dark:text-rose-400'
+                                    : t.priority === 'high'
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : 'text-neutral-500'
+                                }`}>
+                                  {t.priority === 'urgent' ? 'Urgente' : t.priority === 'high' ? 'Alta' : t.priority === 'medium' ? 'Média' : 'Baixa'}
+                                </span>
+                              ) : <span />}
+
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-neutral-400">Mover:</span>
+                                <select
+                                  value={t.status}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => moveTaskStatus(t.id, e.target.value as TaskStatus)}
+                                  className="rounded-md border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 text-[10px] font-medium text-neutral-700 outline-none cursor-pointer dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+                                >
+                                  <option value="backlog">Backlog</option>
+                                  <option value="todo">A Fazer</option>
+                                  <option value="in_progress">Andamento</option>
+                                  <option value="done">Concluído</option>
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
         </div>
       )}
 

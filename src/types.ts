@@ -275,8 +275,6 @@ export interface UserProfile {
 export type ActiveNavTab =
   | 'dashboard'
   | 'finance'
-  | 'whatsapp'
-  | 'lifegraph'
   | 'assistant'
   | 'inbox'
   | 'tasks'
@@ -414,5 +412,13 @@ export interface LifeGraphEdge {
   fromId: string;
   toId: string;
   relationship: string;
+}
+
+export interface AppToast {
+  id: string;
+  message: string;
+  type?: 'success' | 'info' | 'warning';
+  undoAction?: () => void;
+  undoLabel?: string;
 }
 

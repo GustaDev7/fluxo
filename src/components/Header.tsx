@@ -28,6 +28,7 @@ export const Header: React.FC = () => {
     markNotificationAsRead,
     markAllNotificationsAsRead,
     deleteNotification,
+    activeTab,
     setActiveTab,
     selectedTagFilter,
     setSelectedTagFilter,
@@ -69,26 +70,29 @@ export const Header: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 w-full items-center justify-between border-b border-neutral-200 bg-white/95 px-4 backdrop-blur-md dark:border-neutral-800 dark:bg-neutral-900/95 sm:px-6">
+    <header className="sticky top-0 z-20 flex h-16 w-full items-center justify-between border-b border-neutral-200 bg-white/95 px-3 sm:px-6 backdrop-blur-md dark:border-neutral-800 dark:bg-neutral-900/95">
       {/* Search / Command trigger & Mobile Logo */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3 flex-1 sm:flex-initial">
         {/* Mobile Logo Button */}
         <button
           onClick={() => setActiveTab('dashboard')}
-          className="flex sm:hidden items-center justify-center p-1 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          className="flex lg:hidden items-center justify-center p-1 rounded-xl shrink-0 hover:bg-neutral-100 dark:hover:bg-neutral-800"
           title="Fluxo - Página Inicial"
         >
-          <FluxoIcon size={28} />
+          <FluxoIcon size={26} />
         </button>
 
         <button
           id="header-search-btn"
           onClick={() => setIsCommandPaletteOpen(true)}
-          className="flex h-10 items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3.5 text-xs text-neutral-500 transition-all hover:border-neutral-300 hover:bg-neutral-100 hover:text-neutral-800 dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-400 dark:hover:border-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 sm:w-64"
+          className="flex h-9 sm:h-10 flex-1 sm:flex-initial items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-2.5 sm:px-3.5 text-xs text-neutral-500 transition-all hover:border-neutral-300 hover:bg-neutral-100 hover:text-neutral-800 dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-400 dark:hover:border-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 sm:w-64 min-w-0"
         >
           <Search className="h-3.5 w-3.5 shrink-0" />
-          <span className="flex-1 text-left">Buscar tarefas, projetos...</span>
-          <kbd className="hidden rounded bg-neutral-200/70 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300 sm:inline-block">
+          <span className="truncate text-left">
+            <span className="inline sm:hidden">Buscar...</span>
+            <span className="hidden sm:inline">Buscar tarefas, projetos...</span>
+          </span>
+          <kbd className="hidden rounded bg-neutral-200/70 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300 sm:inline-block shrink-0">
             ⌘K
           </kbd>
         </button>
@@ -109,10 +113,10 @@ export const Header: React.FC = () => {
       </div>
 
       {/* Right Action Icons & Controls */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 ml-2">
         {/* Active Pomodoro Widget Pill */}
         {activeTimer && (
-          <div className="flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/80 px-2.5 py-1 text-xs text-indigo-900 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200">
+          <div className="hidden sm:flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/80 px-2.5 py-1 text-xs text-indigo-900 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200">
             <Timer className="h-3.5 w-3.5 text-indigo-600 animate-pulse dark:text-indigo-400" />
             <span className="font-mono font-bold">{formatTimeRemaining(activeTimer.secondsRemaining)}</span>
             <div className="flex items-center gap-1">
@@ -150,7 +154,7 @@ export const Header: React.FC = () => {
           onClick={() => forceDbSync()}
           disabled={isDbSaving}
           title={`Banco de Dados: ${isDbConnected ? 'Conectado e sincronizado' : 'Offline'}. Último sync: ${lastDbSyncedAt || 'agora'}. Clique para forçar gravação.`}
-          className="hidden sm:flex items-center gap-1.5 rounded-xl border border-neutral-200/80 bg-neutral-50/80 px-2.5 py-1.5 text-xs text-neutral-600 transition-all hover:border-neutral-300 hover:bg-neutral-100 dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-300 dark:hover:border-neutral-700"
+          className="hidden md:flex items-center gap-1.5 rounded-xl border border-neutral-200/80 bg-neutral-50/80 px-2.5 py-1.5 text-xs text-neutral-600 transition-all hover:border-neutral-300 hover:bg-neutral-100 dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-300 dark:hover:border-neutral-700"
         >
           <span className="relative flex h-2 w-2">
             {isDbConnected && !isDbSaving && (
@@ -168,46 +172,63 @@ export const Header: React.FC = () => {
           </span>
           <span className="text-[11px] font-medium tracking-tight">
             {isDbSaving
-              ? 'Salvando no banco...'
+              ? 'Salvando...'
               : isDbConnected
-              ? 'Banco Conectado'
-              : 'Sem conexão'}
+              ? 'Conectado'
+              : 'Offline'}
           </span>
         </button>
 
-        {/* Global Quick Capture Button */}
+        {/* Global Quick Capture Button (Princípio #8 e #9: Ação Principal Contextual e Consistente) */}
         <button
           id="header-quick-capture-btn"
           onClick={() => setIsQuickCaptureOpen(true)}
-          className="flex h-9 items-center gap-1.5 rounded-xl bg-indigo-600 px-3 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 transition-all hover:bg-indigo-700 active:scale-95"
+          className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-2.5 sm:px-3 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 transition-all hover:bg-indigo-700 active:scale-95 shrink-0"
+          title="Captura Rápida Universal (+)"
         >
-          <Plus className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Nova Tarefa</span>
+          <Plus className="h-4 w-4" />
+          <span className="hidden sm:inline">
+            {activeTab === 'tasks'
+              ? 'Nova Tarefa'
+              : activeTab === 'finance'
+              ? 'Adicionar'
+              : activeTab === 'projects'
+              ? 'Novo Projeto'
+              : activeTab === 'notes'
+              ? 'Nova Nota'
+              : activeTab === 'agenda' || activeTab === 'calendar'
+              ? 'Novo Evento'
+              : activeTab === 'goals'
+              ? 'Nova Meta'
+              : activeTab === 'habits'
+              ? 'Novo Hábito'
+              : 'Novo'}
+          </span>
         </button>
 
         {/* Guide / How to use */}
         <button
           id="header-guide-btn"
           onClick={() => setActiveTab('guide')}
-          className="flex h-9 items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 px-2.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+          className="hidden md:flex h-9 items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 px-2.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
           title="Como Usar o Sistema (Guia & Dicas)"
         >
           <BookOpen className="h-3.5 w-3.5" />
-          <span className="hidden md:inline">Como Usar</span>
+          <span>Como Usar</span>
         </button>
 
         {/* Theme Toggle */}
         <button
           id="header-theme-toggle-btn"
           onClick={toggleTheme}
-          className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 shrink-0"
           title={user.theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
         >
           {user.theme === 'dark' ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
         </button>
 
         {/* Notifications Dropdown */}
-        <div className="relative" ref={notifRef}>
+        <div className="relative shrink-0" ref={notifRef}>
           <button
             id="header-notifications-btn"
             onClick={() => setIsNotifOpen(!isNotifOpen)}

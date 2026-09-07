@@ -18,6 +18,7 @@ import {
   TrendingUp,
   ShieldCheck,
   Zap,
+  Lightbulb,
 } from 'lucide-react';
 
 interface LifeOverviewModalProps {
@@ -275,8 +276,9 @@ export const LifeOverviewModal: React.FC<LifeOverviewModalProps> = ({ isOpen, on
               <div className="mt-3 space-y-1">
                 <div className="flex justify-between text-sm">
                   <span className="text-neutral-600 dark:text-neutral-400">Maior sequência:</span>
-                  <span className="font-bold text-orange-600 dark:text-orange-400">
-                    {overview.habits.currentStreak} dias 🔥
+                  <span className="font-bold text-orange-600 dark:text-orange-400 flex items-center gap-1">
+                    <span>{overview.habits.currentStreak} dias</span>
+                    <Flame className="h-3 w-3 inline text-orange-500" />
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
@@ -345,8 +347,9 @@ export const LifeOverviewModal: React.FC<LifeOverviewModalProps> = ({ isOpen, on
               ))}
             </div>
 
-            <div className="mt-4 rounded-xl bg-indigo-50/50 p-3 text-xs text-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-300">
-              💡 <strong>Recomendação Executiva do Fluxo:</strong> {overview.priorities.actionAdvice}
+            <div className="mt-4 flex items-start gap-2 rounded-xl bg-indigo-50/50 p-3 text-xs text-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-300">
+              <Lightbulb className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400 mt-0.5" />
+              <span><strong>Recomendação Executiva do Fluxo:</strong> {overview.priorities.actionAdvice}</span>
             </div>
           </div>
         </div>

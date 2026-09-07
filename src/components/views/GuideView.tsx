@@ -26,6 +26,8 @@ import {
   CalendarRange,
   ChevronDown,
   ChevronUp,
+  DollarSign,
+  ShieldCheck,
 } from 'lucide-react';
 import { ActiveNavTab } from '../../types';
 
@@ -100,7 +102,7 @@ export const GuideView: React.FC = () => {
     {
       step: 'Passo 6',
       title: 'Rituais & Hábitos Diários',
-      badge: 'Streaks 🔥',
+      badge: 'Streaks',
       desc: 'Construa consistência marcando seus hábitos matinais, diurnos e noturnos. Mantenha sua contagem de ofensivas (streaks) viva semana após semana sem quebrar a corrente.',
       icon: Flame,
       color: 'from-orange-500 to-amber-600',
@@ -120,6 +122,19 @@ export const GuideView: React.FC = () => {
         'Métricas instantâneas: tarefas pendentes para hoje, hábitos feitos, horas em foco e prazos vencidos.',
         'Widget de Prioridades Inteligentes com IA: sugere em tempo real qual tarefa merece sua atenção imediata.',
         'Atalho rápido para iniciar timer de foco diretamente em qualquer demanda.',
+      ],
+    },
+    {
+      id: 'finance',
+      name: 'Gestão Financeira AUVP',
+      icon: DollarSign,
+      tab: 'finance' as ActiveNavTab,
+      summary: 'Metodologia AUVP integrada para blindagem patrimonial, orçamento base zero e liberdade financeira.',
+      features: [
+        'Reserva de Emergência com termômetro de cobertura (3 a 12 meses de custo essencial).',
+        'Orçamento Base Zero com distribuição inteligente (50% Necessidades, 30% Conforto, 20% Liberdade).',
+        'Controle de Contas a Pagar & Boletos com alertas preventivos de vencimento.',
+        'Diagnóstico 360° com cálculo de Score de Saúde Financeira de 0 a 100.',
       ],
     },
     {
@@ -203,7 +218,7 @@ export const GuideView: React.FC = () => {
       summary: 'Matriz dos últimos 7 dias para consolidação de rotinas e acompanhamento de streaks.',
       features: [
         'Marcação em 1 clique para dias passados ou presentes.',
-        'Cálculo automático de ofensiva atual (🔥 Streak) e maior recorde histórico.',
+        'Cálculo automático de ofensiva atual (Streak) e maior recorde histórico.',
         'Filtros por período: Manhã, Tarde, Noite ou Qualquer hora.',
       ],
     },
@@ -269,7 +284,7 @@ export const GuideView: React.FC = () => {
       title: 'Fechamento do Dia (Shutdown Ritual)',
       time: '18:00 - 18:10',
       steps: [
-        'Abra a tela de Hábitos e marque os rituais que você realizou para manter sua ofensiva 🔥.',
+        'Abra a tela de Hábitos e marque os rituais que você realizou para manter sua ofensiva.',
         'Marque as tarefas concluídas no Kanban (se tiver repetição, a próxima é agendada automaticamente).',
         'Dê uma rápida olhada no Calendário de amanhã para dormir com a mente leve e preparada.',
       ],

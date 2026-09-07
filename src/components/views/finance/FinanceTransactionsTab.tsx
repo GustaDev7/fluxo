@@ -102,7 +102,7 @@ export const FinanceTransactionsTab: React.FC = () => {
   const getAccountName = (accId?: string, cardId?: string) => {
     if (cardId) {
       const card = creditCards.find((c) => c.id === cardId);
-      return card ? `💳 ${card.name}` : 'Cartão';
+      return card ? card.name : 'Cartão';
     }
     const acc = accounts.find((a) => a.id === accId);
     return acc ? acc.name : 'Conta';
@@ -224,7 +224,7 @@ export const FinanceTransactionsTab: React.FC = () => {
           ))}
           {creditCards.map((c) => (
             <option key={c.id} value={c.id}>
-              💳 {c.name}
+              {c.name}
             </option>
           ))}
         </select>

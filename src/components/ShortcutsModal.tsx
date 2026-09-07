@@ -11,7 +11,9 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose 
 
   const shortcuts = [
     { key: '⌘K / Ctrl+K', desc: 'Abrir Paleta de Comandos e busca global' },
-    { key: 'Q / C', desc: 'Captura Rápida de Tarefa (Quick Capture com IA)' },
+    { key: 'Q / C', desc: 'Captura Rápida de Demanda (Tarefas, Gastos, Metas)' },
+    { key: 'F / $', desc: 'Abrir Gestão Financeira AUVP' },
+    { key: 'A', desc: 'Abrir Assistente Inteligente IA & Voz' },
     { key: '?', desc: 'Abrir este guia de atalhos de teclado' },
     { key: 'Esc', desc: 'Fechar modais, menus e janelas ativas' },
     { key: '1', desc: 'Ir para o Painel Geral (Dashboard)' },

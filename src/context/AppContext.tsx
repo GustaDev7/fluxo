@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Task,
   Project,
@@ -20,6 +20,7 @@ import {
   NoteBlock,
   AIChatMessage,
   AIExecutedAction,
+  AppToast,
 } from '../types';
 import { EnrichedProjectRoutine, getAllEnrichedProjectRoutines } from '../utils/routineUtils';
 import {
@@ -79,6 +80,19 @@ interface AppContextType {
   setIsDarkMode: (dark: boolean) => void;
   isShortcutsOpen: boolean;
   setIsShortcutsOpen: (open: boolean) => void;
+
+  // Immediate Feedback & Undo (Princípios #15 e #16)
+  toast: AppToast | null;
+  showToast: (
+    message: string,
+    options?: {
+      type?: 'success' | 'info' | 'warning';
+      undoAction?: () => void;
+      undoLabel?: string;
+      durationMs?: number;
+    }
+  ) => void;
+  dismissToast: () => void;
 
   // Data
   user: UserProfile;
@@ -224,6 +238,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isDbConnected, setIsDbConnected] = useState(true);
   const [isDbSaving, setIsDbSaving] = useState(false);
   const [lastDbSyncedAt, setLastDbSyncedAt] = useState<string | null>(null);
+  const [isHydratedFromDb, setIsHydratedFromDb] = useState(false);
 
   // Navigation & UI state
   const [activeTab, setActiveTab] = useState<ActiveNavTab>('dashboard');
@@ -236,6 +251,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+
+  // Toast & Undo feedback state
+  const [toast, setToast] = useState<AppToast | null>(null);
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const dismissToast = useCallback(() => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast(null);
+  }, []);
+
+  const showToast = useCallback(
+    (
+      message: string,
+      options?: {
+        type?: 'success' | 'info' | 'warning';
+        undoAction?: () => void;
+        undoLabel?: string;
+        durationMs?: number;
+      }
+    ) => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      const newToast: AppToast = {
+        id: 'toast_' + Date.now(),
+        message,
+        type: options?.type || 'success',
+        undoAction: options?.undoAction,
+        undoLabel: options?.undoLabel || 'Desfazer',
+      };
+      setToast(newToast);
+      toastTimerRef.current = setTimeout(() => {
+        setToast(null);
+      }, options?.durationMs || (options?.undoAction ? 6000 : 3500));
+    },
+    []
+  );
 
   // Entities state with strict sanitization (no sample data)
   const [user, setUser] = useState<UserProfile>(() => {
@@ -376,10 +426,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         text: 'Olá! Sou seu Copiloto de Produtividade com IA Gemini. Você pode falar comigo por voz ou escrever aqui para criar tarefas, agendar reuniões, estruturar projetos ou tirar dúvidas sobre sua rotina.',
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         suggestedPrompts: [
-          '🎙️ Crie uma tarefa urgente para hoje',
-          '📅 Agende uma reunião com a equipe amanhã às 10h',
-          '📋 O que eu tenho pendente para hoje?',
-          '🚀 Crie um projeto chamado Lançamento Beta',
+          'Crie uma tarefa urgente para hoje',
+          'Agende uma reunião com a equipe amanhã às 10h',
+          'O que eu tenho pendente para hoje?',
+          'Crie um projeto chamado Lançamento Beta',
         ],
       },
     ];
@@ -466,6 +516,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .catch((err) => {
         console.warn('Backend store load failed, using local storage fallback:', err);
         setIsDbConnected(false);
+      })
+      .finally(() => {
+        setIsHydratedFromDb(true);
       });
   }, []);
 
@@ -481,6 +534,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('cp_monthly', JSON.stringify(monthlyPlan));
     localStorage.setItem('cp_notifications', JSON.stringify(notifications));
     localStorage.setItem('cp_time_entries', JSON.stringify(timeEntries));
+
+    if (!isHydratedFromDb) return;
 
     setIsDbSaving(true);
     // Debounced sync to server (400ms for fast, reactive persistence)
@@ -570,7 +625,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // Add notification
           const notif: AppNotification = {
             id: `notif_${Date.now()}`,
-            title: 'Sessão de Foco Concluída! 🎉',
+            title: 'Sessão de Foco Concluída',
             message: `Você completou o bloco de foco para "${prev.taskTitle}". Que tal uma pausa revigorante?`,
             type: 'system',
             timestamp: 'Agora',
@@ -641,6 +696,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setTasks((prev) => [newTask, ...prev]);
+
+    showToast('Tarefa adicionada', {
+      undoAction: () => deleteTask(newTask.id),
+      undoLabel: 'Desfazer',
+    });
 
     // Create notification if high or urgent priority
     if (newTask.priority === 'urgent') {
@@ -731,13 +791,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [addTask]);
 
   const deleteTask = useCallback((id: string) => {
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+    setTasks((prev) => {
+      const taskToDelete = prev.find((t) => t.id === id);
+      if (taskToDelete) {
+        showToast('Tarefa excluída', {
+          undoAction: () => setTasks((current) => [taskToDelete, ...current]),
+          undoLabel: 'Desfazer',
+        });
+      }
+      return prev.filter((t) => t.id !== id);
+    });
     if (selectedTaskId === id) setSelectedTaskId(null);
-  }, [selectedTaskId]);
+  }, [selectedTaskId, showToast]);
 
   const moveTaskStatus = useCallback((taskId: string, newStatus: TaskStatus) => {
     updateTask(taskId, { status: newStatus });
-  }, [updateTask]);
+    if (newStatus === 'done') {
+      showToast('Tarefa concluída');
+    }
+  }, [updateTask, showToast]);
 
   const toggleChecklistItem = useCallback((taskId: string, checklistId: string) => {
     setTasks((prev) =>
@@ -817,6 +889,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteProject = useCallback((id: string) => {
     setProjects((prev) => prev.filter((p) => p.id !== id));
+    fetch(`/api/projects/${id}`, { method: 'DELETE' }).catch(console.warn);
     if (selectedProjectId === id) setSelectedProjectId(null);
   }, [selectedProjectId]);
 
@@ -986,6 +1059,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteEvent = useCallback((id: string) => {
     setEvents((prev) => prev.filter((e) => e.id !== id));
+    fetch(`/api/events/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   // ================= GOAL ACTIONS =================
@@ -1025,6 +1099,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteGoal = useCallback((id: string) => {
     setGoals((prev) => prev.filter((g) => g.id !== id));
+    fetch(`/api/goals/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   const incrementGoalProgress = useCallback((id: string, delta: number) => {
@@ -1103,6 +1178,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteHabit = useCallback((id: string) => {
     setHabits((prev) => prev.filter((h) => h.id !== id));
+    fetch(`/api/habits/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   // ================= NOTE ACTIONS =================
@@ -1111,7 +1187,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newNote: NotePage = {
       id: `note_${Date.now()}`,
       title: noteData.title || 'Sem título',
-      icon: noteData.icon || '📝',
+      icon: noteData.icon || '',
       projectId: noteData.projectId,
       taskId: noteData.taskId,
       goalId: noteData.goalId,
@@ -1135,6 +1211,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteNote = useCallback((id: string) => {
     setNotes((prev) => prev.filter((n) => n.id !== id));
+    fetch(`/api/notes/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   const addNoteBlock = useCallback((noteId: string, type: NoteBlock['type'] = 'p') => {
@@ -1745,9 +1822,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       text: 'Histórico limpo. Como posso ajudar com sua produtividade hoje?',
       timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
       suggestedPrompts: [
-        '🎙️ Crie uma tarefa urgente para hoje',
-        '📅 Agende uma reunião para amanhã',
-        '📋 O que eu tenho pendente para hoje?',
+        'Crie uma tarefa urgente para hoje',
+        'Agende uma reunião para amanhã',
+        'O que eu tenho pendente para hoje?',
       ],
     };
     setChatMessages([welcomeMsg]);
@@ -1779,6 +1856,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsDarkMode,
         isShortcutsOpen,
         setIsShortcutsOpen,
+
+        toast,
+        showToast,
+        dismissToast,
 
         user,
         columns,

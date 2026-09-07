@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
+import { useFinance } from '../context/FinanceContext';
 import {
   Search,
   CheckSquare,
@@ -15,6 +16,12 @@ import {
   BookOpen,
   Keyboard,
   DollarSign,
+  ShieldCheck,
+  ReceiptText,
+  CalendarClock,
+  Sparkles,
+  Flame,
+  PieChart,
 } from 'lucide-react';
 
 export const CommandPalette: React.FC = () => {
@@ -26,6 +33,7 @@ export const CommandPalette: React.FC = () => {
     projects,
     notes,
     goals,
+    habits,
     setActiveTab,
     setSelectedTaskId,
     setSelectedProjectId,
@@ -34,6 +42,12 @@ export const CommandPalette: React.FC = () => {
     updateUserProfile,
     setIsShortcutsOpen,
   } = useApp();
+
+  const {
+    setSubTab,
+    openTransactionModal,
+    openDiagnosisModal,
+  } = useFinance();
 
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -81,6 +95,59 @@ export const CommandPalette: React.FC = () => {
       action: () => {
         setIsCommandPaletteOpen(false);
         setActiveTab('finance');
+      },
+    },
+    {
+      id: 'act_finance_expense',
+      label: 'Novo Lançamento / Despesa Financeira',
+      category: 'Finanças AUVP',
+      icon: ReceiptText,
+      action: () => {
+        setIsCommandPaletteOpen(false);
+        openTransactionModal('expense');
+      },
+    },
+    {
+      id: 'act_emergency_fund',
+      label: 'Reserva de Emergência AUVP (Blindagem & Cobertura)',
+      category: 'Finanças AUVP',
+      icon: ShieldCheck,
+      action: () => {
+        setIsCommandPaletteOpen(false);
+        setSubTab('emergency');
+        setActiveTab('finance');
+      },
+    },
+    {
+      id: 'act_budget_zero',
+      label: 'Orçamento Base Zero (Regra 50-30-20 & Gastos)',
+      category: 'Finanças AUVP',
+      icon: PieChart,
+      action: () => {
+        setIsCommandPaletteOpen(false);
+        setSubTab('budget');
+        setActiveTab('finance');
+      },
+    },
+    {
+      id: 'act_bills',
+      label: 'Contas Fixas & Boletos do Mês',
+      category: 'Finanças AUVP',
+      icon: CalendarClock,
+      action: () => {
+        setIsCommandPaletteOpen(false);
+        setSubTab('bills');
+        setActiveTab('finance');
+      },
+    },
+    {
+      id: 'act_diagnosis',
+      label: 'Diagnóstico 360° Financeiro AUVP',
+      category: 'Finanças AUVP',
+      icon: Sparkles,
+      action: () => {
+        setIsCommandPaletteOpen(false);
+        openDiagnosisModal();
       },
     },
     {
@@ -189,10 +256,26 @@ export const CommandPalette: React.FC = () => {
       },
     }));
 
+  const matchedHabits = habits
+    .filter((h) => h.name.toLowerCase().includes(q) || h.category.toLowerCase().includes(q))
+    .slice(0, 3)
+    .map((h) => ({
+      id: h.id,
+      label: h.name,
+      sublabel: `Hábito • Sequência atual: ${h.currentStreak} dias`,
+      category: 'Hábitos',
+      icon: Flame,
+      action: () => {
+        setIsCommandPaletteOpen(false);
+        setActiveTab('habits');
+      },
+    }));
+
   const allResults = [
     ...matchedActions,
     ...matchedTasks,
     ...matchedProjects,
+    ...matchedHabits,
     ...matchedNotes,
     ...matchedGoals,
   ];

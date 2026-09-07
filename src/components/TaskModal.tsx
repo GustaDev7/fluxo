@@ -146,11 +146,11 @@ export const TaskModal: React.FC = () => {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50 p-3 sm:p-6 backdrop-blur-sm overflow-y-auto">
-      <div className="relative my-auto w-full max-w-3xl overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50 p-0 sm:p-4 backdrop-blur-sm overflow-y-auto">
+      <div className="relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-3xl overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 flex flex-col">
         {/* Top Header Bar */}
-        <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4 dark:border-neutral-800">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between border-b border-neutral-200 px-4 sm:px-6 py-3.5 sm:py-4 dark:border-neutral-800 flex-wrap gap-2 sticky top-0 bg-white dark:bg-neutral-900 z-10">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <button
               onClick={() => handleStatusChange(task.status === 'done' ? 'todo' : 'done')}
               className="text-neutral-400 hover:text-emerald-600 transition-colors"
@@ -181,7 +181,8 @@ export const TaskModal: React.FC = () => {
               title="Iniciar Pomodoro para esta tarefa"
             >
               <Play className="h-3 w-3 fill-current" />
-              <span>Iniciar Foco</span>
+              <span className="hidden sm:inline">Iniciar Foco</span>
+              <span className="sm:hidden">Foco</span>
             </button>
           </div>
 
@@ -203,7 +204,7 @@ export const TaskModal: React.FC = () => {
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="max-h-[75vh] overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
           {/* Title and Description */}
           <div className="space-y-3">
             <input

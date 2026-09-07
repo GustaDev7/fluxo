@@ -7,6 +7,7 @@ import {
   Plus,
   Clock,
   CheckCircle2,
+  Check,
   CalendarDays,
   Download,
   Repeat,
@@ -247,6 +248,7 @@ export const CalendarView: React.FC = () => {
                     )
                   : [];
               const isCurrentDay = day.dateStr === todayStr;
+              const isSelectedDay = day.dateStr === selectedDayForNewEvent;
               const totalItems = dayEvents.length + dayTasks.length + dayRoutines.length;
 
               return (
@@ -254,17 +256,18 @@ export const CalendarView: React.FC = () => {
                   key={idx}
                   onClick={() => {
                     setSelectedDayForNewEvent(day.dateStr);
-                    setIsNewEventModalOpen(true);
                   }}
-                  className={`group min-h-[105px] sm:min-h-[120px] p-2 transition-colors cursor-pointer hover:bg-neutral-50/70 dark:hover:bg-neutral-800/30 ${
+                  className={`group min-h-[52px] sm:min-h-[120px] p-1.5 sm:p-2 transition-colors cursor-pointer hover:bg-neutral-50/70 dark:hover:bg-neutral-800/30 ${
                     !day.isCurrentMonth ? 'bg-neutral-50/40 opacity-40 dark:bg-neutral-950/20' : ''
-                  }`}
+                  } ${isSelectedDay ? 'bg-indigo-50/30 dark:bg-indigo-950/20 ring-1 ring-inset ring-indigo-400' : ''}`}
                 >
                   <div className="flex items-center justify-between">
                     <span
                       className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
                         isCurrentDay
                           ? 'bg-indigo-600 text-white shadow-sm'
+                          : isSelectedDay
+                          ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-200'
                           : 'text-neutral-700 dark:text-neutral-300'
                       }`}
                     >
@@ -283,17 +286,31 @@ export const CalendarView: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Badges container */}
-                  <div className="mt-1.5 space-y-1">
+                  {/* Mobile Dots Indicator (Princípio #39: Mini indicadores visuais no celular) */}
+                  <div className="flex sm:hidden items-center justify-center gap-1 mt-1">
+                    {dayEvents.length > 0 && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                    )}
+                    {dayTasks.length > 0 && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                    )}
+                    {dayRoutines.length > 0 && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-purple-500" />
+                    )}
+                  </div>
+
+                  {/* Desktop / Tablet Full Badges Container */}
+                  <div className="hidden sm:block mt-1.5 space-y-1">
                     {/* Events */}
                     {dayEvents.slice(0, 2).map((evt) => (
                       <div
                         key={evt.id}
                         onClick={(e) => e.stopPropagation()}
-                        className="truncate rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800 dark:bg-blue-950/60 dark:text-blue-200 border border-blue-200/60 dark:border-blue-900"
+                        className="truncate rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800 dark:bg-blue-950/60 dark:text-blue-200 border border-blue-200/60 dark:border-blue-900 flex items-center gap-1"
                         title={`${evt.startTime} - ${evt.title}`}
                       >
-                        🕒 {evt.startTime} {evt.title}
+                        <Clock className="h-2.5 w-2.5 shrink-0" />
+                        <span className="truncate">{evt.startTime} {evt.title}</span>
                       </div>
                     ))}
 
@@ -305,14 +322,15 @@ export const CalendarView: React.FC = () => {
                           e.stopPropagation();
                           setSelectedTaskId(t.id);
                         }}
-                        className={`truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold border ${
+                        className={`truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold border flex items-center gap-1 ${
                           t.status === 'done'
                             ? 'bg-neutral-100 text-neutral-400 line-through dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700'
                             : 'bg-indigo-50 text-indigo-800 border-indigo-200/60 dark:bg-indigo-950/60 dark:text-indigo-200 dark:border-indigo-900'
                         }`}
                         title={t.title}
                       >
-                        ✓ {t.title}
+                        <Check className="h-2.5 w-2.5 shrink-0" />
+                        <span className="truncate">{t.title}</span>
                       </div>
                     ))}
 
@@ -358,6 +376,94 @@ export const CalendarView: React.FC = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile-Only Selected Day Schedule Card (Princípio #39: Em mobile, calendário prioriza lista do dia selecionado abaixo) */}
+      {viewMode === 'month' && (
+        <div className="block sm:hidden rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
+              Agenda de {formatDatePT(selectedDayForNewEvent)}
+            </h4>
+            <button
+              onClick={() => setIsNewEventModalOpen(true)}
+              className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Compromisso</span>
+            </button>
+          </div>
+
+          <div className="divide-y divide-neutral-100 dark:divide-neutral-800 text-xs">
+            {/* Day Events */}
+            {events.filter((e) => e.startDate === selectedDayForNewEvent).map((evt) => (
+              <div key={evt.id} className="flex items-center justify-between py-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400 shrink-0">
+                    <Clock className="h-3.5 w-3.5" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-neutral-900 dark:text-neutral-100">{evt.title}</p>
+                    <p className="text-[10px] text-neutral-400">{evt.startTime} às {evt.endTime}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Day Tasks */}
+            {tasks.filter((t) => t.dueDate === selectedDayForNewEvent && !t.isInbox).map((t) => (
+              <div
+                key={t.id}
+                onClick={() => setSelectedTaskId(t.id)}
+                className="flex items-center justify-between py-2 cursor-pointer"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400 shrink-0">
+                    <Check className="h-3.5 w-3.5" />
+                  </div>
+                  <p className={`font-medium ${t.status === 'done' ? 'line-through text-neutral-400' : 'text-neutral-800 dark:text-neutral-200'}`}>
+                    {t.title}
+                  </p>
+                </div>
+                <span className="text-[10px] uppercase font-bold text-neutral-400">{t.priority}</span>
+              </div>
+            ))}
+
+            {/* Day Routines */}
+            {allProjectRoutines
+              .filter((r) => r.syncToCalendar !== false && isRoutineScheduledForDate(r, selectedDayForNewEvent))
+              .map((r) => {
+                const isDone = isRoutineCompletedOnDate(r, selectedDayForNewEvent);
+                return (
+                  <div key={r.id} className="flex items-center justify-between py-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => toggleProjectRoutine(r.projectId, r.id, selectedDayForNewEvent)}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg shrink-0"
+                        style={{ backgroundColor: `${r.projectColor}20`, color: r.projectColor }}
+                      >
+                        {isDone ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <Repeat className="h-3.5 w-3.5" />}
+                      </button>
+                      <div>
+                        <p className={`font-medium ${isDone ? 'line-through text-neutral-400' : 'text-neutral-800 dark:text-neutral-200'}`}>
+                          {r.title}
+                        </p>
+                        <p className="text-[10px] text-neutral-400">Projeto: {r.projectName}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+            {events.filter((e) => e.startDate === selectedDayForNewEvent).length === 0 &&
+             tasks.filter((t) => t.dueDate === selectedDayForNewEvent && !t.isInbox).length === 0 &&
+             allProjectRoutines.filter((r) => r.syncToCalendar !== false && isRoutineScheduledForDate(r, selectedDayForNewEvent)).length === 0 && (
+              <div className="py-4 text-center text-xs text-neutral-400">
+                Nenhum compromisso ou tarefa para este dia.
+              </div>
+            )}
           </div>
         </div>
       )}

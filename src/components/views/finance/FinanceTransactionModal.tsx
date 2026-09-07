@@ -342,7 +342,7 @@ export const FinanceTransactionModal: React.FC = () => {
                   <option value="">Nenhum (Debitar da conta acima)</option>
                   {creditCards.map((card) => (
                     <option key={card.id} value={card.id}>
-                      💳 {card.name} (Disp: R$ {card.availableLimit.toFixed(2)})
+                      {card.name} (Disp: R$ {card.availableLimit.toFixed(2)})
                     </option>
                   ))}
                 </select>
@@ -401,7 +401,7 @@ export const FinanceTransactionModal: React.FC = () => {
                 <option value="">Nenhum Projeto</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
-                    📁 {p.name}
+                    {p.name}
                   </option>
                 ))}
               </select>
@@ -419,7 +419,7 @@ export const FinanceTransactionModal: React.FC = () => {
                 <option value="">Nenhuma Meta</option>
                 {goals.map((g) => (
                   <option key={g.id} value={g.id}>
-                    🎯 {g.title}
+                    {g.title}
                   </option>
                 ))}
               </select>

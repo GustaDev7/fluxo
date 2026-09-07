@@ -78,6 +78,7 @@ export const INITIAL_USER_MEMORIES: UserMemoryItem[] = [
 
 export interface InterpretedLifeAction {
   category: 'finance_task' | 'finance_expense' | 'finance_income' | 'task' | 'calendar_event' | 'goal' | 'habit' | 'general';
+  type?: 'finance' | 'bill' | 'goal' | 'task' | 'event' | 'habit' | 'general';
   summary: string;
   suggestedActions: AIExecutedAction[];
   details: {
@@ -88,6 +89,10 @@ export interface InterpretedLifeAction {
     goal?: Partial<Goal>;
     habit?: Partial<Habit>;
   };
+  // Convenience aliases for direct access
+  transaction?: Partial<FinanceTransaction>;
+  bill?: Partial<FinanceBill>;
+  goal?: Partial<Goal>;
 }
 
 /**
@@ -134,8 +139,19 @@ export function interpretLifeInput(input: string, referenceDate?: string): Inter
     else if (lower.includes('condom')) itemDesc = 'Pagar condomínio';
     else if (lower.includes('boleto')) itemDesc = 'Pagar boleto';
 
+    const billData: Partial<FinanceBill> = {
+      title: itemDesc,
+      amount,
+      dueDate: formattedDueDate,
+      masterCategory: 'custos_fixos',
+      type: 'expense',
+      status: 'pending',
+    };
+
     return {
       category: 'finance_task',
+      type: 'bill',
+      bill: billData,
       summary: `Identificado compromisso financeiro: ${itemDesc} (R$ ${amount.toFixed(2)}) no dia ${dueDay}`,
       suggestedActions: [
         {
@@ -146,8 +162,8 @@ export function interpretLifeInput(input: string, referenceDate?: string): Inter
           data: {
             title: itemDesc,
             amount,
-            dueDay,
             dueDate: formattedDueDate,
+            type: 'expense',
             masterCategory: 'custos_fixos',
           },
         },
@@ -178,12 +194,7 @@ export function interpretLifeInput(input: string, referenceDate?: string): Inter
         },
       ],
       details: {
-        bill: {
-          title: itemDesc,
-          amount,
-          dueDay,
-          masterCategory: 'custos_fixos',
-        },
+        bill: billData,
         task: {
           title: `${itemDesc} (R$ ${amount.toFixed(2)})`,
           dueDate: formattedDueDate,
@@ -226,8 +237,19 @@ export function interpretLifeInput(input: string, referenceDate?: string): Inter
       subcategory = 'Educação';
     }
 
+    const txData: Partial<FinanceTransaction> = {
+      amount,
+      type: 'expense',
+      description: desc,
+      masterCategory: category as any,
+      subcategory,
+      date: today,
+    };
+
     return {
       category: 'finance_expense',
+      type: 'finance',
+      transaction: txData,
       summary: `Despesa identificada: R$ ${amount.toFixed(2)} em ${desc}`,
       suggestedActions: [
         {
@@ -246,12 +268,7 @@ export function interpretLifeInput(input: string, referenceDate?: string): Inter
         },
       ],
       details: {
-        transaction: {
-          amount,
-          type: 'expense',
-          description: desc,
-          date: today,
-        },
+        transaction: txData,
       },
     };
   }
@@ -265,8 +282,18 @@ export function interpretLifeInput(input: string, referenceDate?: string): Inter
       if (valMatch) amount = parseFloat(valMatch[1].replace(',', '.'));
     }
 
+    const incomeTxData: Partial<FinanceTransaction> = {
+      amount,
+      type: 'income',
+      description: 'Recebimento de Renda',
+      masterCategory: 'liberdade_financeira',
+      date: today,
+    };
+
     return {
       category: 'finance_income',
+      type: 'finance',
+      transaction: incomeTxData,
       summary: `Recebimento identificado: R$ ${amount.toFixed(2)} adicionado à renda`,
       suggestedActions: [
         {
@@ -284,12 +311,7 @@ export function interpretLifeInput(input: string, referenceDate?: string): Inter
         },
       ],
       details: {
-        transaction: {
-          amount,
-          type: 'income',
-          description: 'Recebimento de Renda',
-          date: today,
-        },
+        transaction: incomeTxData,
       },
     };
   }
@@ -300,8 +322,17 @@ export function interpretLifeInput(input: string, referenceDate?: string): Inter
     if (lower.includes('30 mil') || lower.includes('30000')) target = 30000;
     const deadline = '2027-12-31';
 
+    const goalData: Partial<Goal> = {
+      title: 'Comprar Carro Próprio',
+      targetValue: target,
+      currentValue: 0,
+      deadline,
+    };
+
     return {
       category: 'goal',
+      type: 'goal',
+      goal: goalData,
       summary: `Criando desdobramento integrado da Meta: "Comprar Carro (R$ ${target.toLocaleString('pt-BR')})"`,
       suggestedActions: [
         {
@@ -343,12 +374,7 @@ export function interpretLifeInput(input: string, referenceDate?: string): Inter
         },
       ],
       details: {
-        goal: {
-          title: 'Comprar Carro Próprio',
-          targetValue: target,
-          currentValue: 0,
-          deadline,
-        },
+        goal: goalData,
         task: {
           title: 'Realizar Aporte Mensal Meta Carro (R$ 770)',
           dueDate: today,
@@ -467,10 +493,10 @@ export function generateLifeHealthOverview(
 
   // 2. Trabalho / Projetos
   const activeProjects = projects.filter((p) => p.status === 'active');
-  const criticalProjects = activeProjects.filter((p) => p.priority === 'high' || p.priority === 'urgent');
+  const criticalProjects = activeProjects.filter((p) => p.priority === 'high');
 
   // 3. Finanças
-  const monthlyIncome = financeBudget?.netIncome || 6000;
+  const monthlyIncome = financeBudget?.plannedIncome || 6000;
   const monthlyExpenses = transactions
     .filter((t) => t.type === 'expense' && t.date.startsWith(today.slice(0, 7)))
     .reduce((acc, t) => acc + t.amount, 0);
@@ -734,7 +760,7 @@ export function buildLifeGraph(
 
   // 7. Patrimônio Líquido Acumulado
   const netWorthNodeId = 'node_networth';
-  const totalInvested = investments.reduce((acc, inv) => acc + inv.currentTotalValue, 0) || 54200;
+  const totalInvested = investments.reduce((acc, inv) => acc + (inv.currentValue || 0), 0) || 54200;
   nodes.push({
     id: netWorthNodeId,
     type: 'networth',

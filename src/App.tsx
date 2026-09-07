@@ -26,6 +26,7 @@ import { AssistantView } from './components/views/AssistantView';
 import { FinanceView } from './components/views/FinanceView';
 import { AIAssistantWidget } from './components/AIAssistantWidget';
 import { FinanceProvider } from './context/FinanceContext';
+import { MobileBottomNav } from './components/MobileBottomNav';
 
 const AppContent: React.FC = () => {
   const {
@@ -36,6 +37,8 @@ const AppContent: React.FC = () => {
     setIsCommandPaletteOpen,
     isShortcutsOpen,
     setIsShortcutsOpen,
+    toast,
+    dismissToast,
   } = useApp();
 
   // Apply dark mode class to document element
@@ -68,6 +71,10 @@ const AppContent: React.FC = () => {
         } else if (e.key === '?') {
           e.preventDefault();
           setIsShortcutsOpen((prev) => !prev);
+        } else if (e.key === 'f' || e.key === '$') {
+          setActiveTab('finance');
+        } else if (e.key === 'a') {
+          setActiveTab('assistant');
         } else if (e.key === '1') {
           setActiveTab('dashboard');
         } else if (e.key === '2') {
@@ -134,20 +141,44 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-neutral-50 text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="flex h-screen h-[100dvh] w-full max-w-full overflow-hidden bg-neutral-50 text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100">
       {/* Global Sidebar Navigation */}
       <Sidebar />
 
       {/* Main App Container */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Top Header */}
         <Header />
 
         {/* Scrollable View Area */}
-        <main className="flex-1 overflow-y-auto bg-neutral-50 dark:bg-neutral-950 transition-colors">
+        <main className="flex-1 overflow-y-auto pb-20 lg:pb-0 bg-neutral-50 dark:bg-neutral-950 transition-colors">
           {renderActiveView()}
         </main>
       </div>
+
+      {/* Mobile Fixed Bottom Navigation (Princípio #24) */}
+      <MobileBottomNav />
+
+      {/* Floating Instant Feedback & Undo Notification (Princípios #15 e #16) */}
+      {toast && (
+        <div
+          id="global-toast-notification"
+          className="fixed bottom-20 lg:bottom-6 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-2xl border border-neutral-800/10 bg-neutral-900/95 px-4 py-2.5 text-xs font-medium text-white shadow-2xl backdrop-blur-md dark:border-neutral-700/60 dark:bg-white/95 dark:text-neutral-900 animate-in fade-in slide-in-from-bottom-2 duration-200"
+        >
+          <span>{toast.message}</span>
+          {toast.undoAction && (
+            <button
+              onClick={() => {
+                toast.undoAction?.();
+                dismissToast();
+              }}
+              className="rounded-lg bg-white/20 px-2.5 py-1 text-[11px] font-bold text-amber-300 hover:bg-white/30 dark:bg-neutral-900/10 dark:text-indigo-700 dark:hover:bg-neutral-900/20 transition-colors"
+            >
+              {toast.undoLabel || 'Desfazer'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Global Interactive Modals & Voice Copilot */}
       <QuickCaptureModal />

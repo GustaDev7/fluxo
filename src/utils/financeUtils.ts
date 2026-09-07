@@ -570,3 +570,382 @@ export function importTransactionsFromCSV(
 
   return parsed;
 }
+
+export interface AmortizationEstimate {
+  extraMonthly: number;
+  originalMonths: number;
+  newMonths: number;
+  monthsSaved: number;
+  originalTotalPaid: number;
+  newTotalPaid: number;
+  interestSaved: number;
+  originalInterest: number;
+  newInterest: number;
+  originalPayoffDate: string;
+  estimatedPayoffDate: string;
+  lastInstallmentDiscount: {
+    originalAmount: number;
+    discountedAmount: number;
+    discountSaved: number;
+    discountPercent: number;
+  };
+}
+
+/**
+ * Calculates what happens if the user starts amortizing (extra monthly or anticipations)
+ */
+export function calculateAmortizationEstimate(
+  currentBalance: number,
+  installmentAmount: number,
+  remainingInstallments: number,
+  monthlyInterestRatePercent: number,
+  extraMonthly: number = 100
+): AmortizationEstimate {
+  const remMonths = Math.max(1, remainingInstallments);
+  const pmt = Math.max(0, installmentAmount);
+  const rate = Math.max(0, monthlyInterestRatePercent) / 100;
+
+  const originalTotalPaid = remMonths * pmt;
+
+  // Use exact present value (principal / saldo devedor contábil) as basis for interest calculation
+  const calculatedPV = rate > 0 ? calculateBalancePrice(pmt, remMonths, monthlyInterestRatePercent) : remMonths * pmt;
+  const principalBase = calculatedPV > 0 ? calculatedPV : (currentBalance > 0 && currentBalance < originalTotalPaid ? currentBalance : originalTotalPaid);
+
+  const originalInterest = Math.max(0, originalTotalPaid - principalBase);
+
+  let balance = principalBase;
+  let months = 0;
+  let totalPaid = 0;
+  let totalInterest = 0;
+  const maxIterations = 360;
+
+  while (balance > 0.01 && months < maxIterations) {
+    months++;
+    const monthlyInterest = balance * rate;
+    let payment = pmt + extraMonthly;
+
+    if (payment > balance + monthlyInterest) {
+      payment = balance + monthlyInterest;
+    }
+
+    const principal = Math.max(0, payment - monthlyInterest);
+    totalInterest += monthlyInterest;
+    totalPaid += payment;
+    balance = Math.max(0, balance - principal);
+  }
+
+  const newMonths = months > 0 ? months : remMonths;
+  const monthsSaved = Math.max(0, remMonths - newMonths);
+  const newTotalPaid = totalPaid > 0 ? totalPaid : originalTotalPaid;
+  const newInterest = totalInterest > 0 ? totalInterest : originalInterest;
+  const interestSaved = Math.max(0, originalTotalPaid - newTotalPaid);
+
+  const now = new Date();
+  const getMonthYear = (addMonths: number) => {
+    const d = new Date(now.getFullYear(), now.getMonth() + addMonths, 1);
+    const month = d.toLocaleDateString('pt-BR', { month: 'short' });
+    return `${month.charAt(0).toUpperCase() + month.slice(1)}/${d.getFullYear()}`;
+  };
+
+  const originalPayoffDate = getMonthYear(remMonths);
+  const estimatedPayoffDate = getMonthYear(newMonths);
+
+  // Antecipação da última parcela com desconto (Tabela Price / CDC)
+  const discountFactor = Math.pow(1 + rate, remMonths);
+  const discountedAmount = rate > 0 && discountFactor > 1 ? pmt / discountFactor : pmt;
+  const discountSaved = Math.max(0, pmt - discountedAmount);
+  const discountPercent = pmt > 0 ? (discountSaved / pmt) * 100 : 0;
+
+  return {
+    extraMonthly,
+    originalMonths: remMonths,
+    newMonths,
+    monthsSaved,
+    originalTotalPaid,
+    newTotalPaid,
+    interestSaved,
+    originalInterest,
+    newInterest,
+    originalPayoffDate,
+    estimatedPayoffDate,
+    lastInstallmentDiscount: {
+      originalAmount: pmt,
+      discountedAmount: Math.round(discountedAmount * 100) / 100,
+      discountSaved: Math.round(discountSaved * 100) / 100,
+      discountPercent: Math.round(discountPercent * 10) / 10,
+    },
+  };
+}
+
+/**
+ * Calculates monthly installment (PMT) from present value (PV), remaining months (n),
+ * and monthly interest rate (i) using Brazilian Tabela Price (CDC):
+ * PMT = PV * [ i / (1 - (1 + i)^(-n)) ]
+ */
+export function calculateInstallmentPrice(
+  presentValue: number,
+  remainingInstallments: number,
+  monthlyRatePercent: number
+): number {
+  const n = Math.max(1, remainingInstallments);
+  const pv = Math.max(0, presentValue);
+  const i = Math.max(0, monthlyRatePercent) / 100;
+  if (pv === 0) return 0;
+  if (i === 0) return Math.round((pv / n) * 100) / 100;
+  const pmt = pv * (i / (1 - Math.pow(1 + i, -n)));
+  return Math.round(pmt * 100) / 100;
+}
+
+/**
+ * Calculates present value (PV / Saldo Devedor a Quitar Hoje) from monthly installment (PMT),
+ * remaining months (n), and monthly interest rate (i) using Tabela Price:
+ * PV = PMT * [ (1 - (1 + i)^(-n)) / i ]
+ */
+export function calculateBalancePrice(
+  installmentAmount: number,
+  remainingInstallments: number,
+  monthlyRatePercent: number
+): number {
+  const n = Math.max(1, remainingInstallments);
+  const pmt = Math.max(0, installmentAmount);
+  const i = Math.max(0, monthlyRatePercent) / 100;
+  if (pmt === 0) return 0;
+  if (i === 0) return Math.round(pmt * n * 100) / 100;
+  const pv = pmt * ((1 - Math.pow(1 + i, -n)) / i);
+  return Math.round(pv * 100) / 100;
+}
+
+export interface NubankInstallmentItem {
+  number: number;
+  dueDate: string;
+  dueDateLabel: string;
+  daysRemaining: number;
+  originalAmount: number;
+  discountedAmount: number;
+  savingsAmount: number;
+  savingsPercent: number;
+}
+
+/**
+ * Calculates exact installment-by-installment discount schedule matching Nubank CDC antecipação
+ */
+export function calculateNubankInstallmentsBreakdown(
+  installmentAmount: number,
+  totalInstallments: number,
+  remainingInstallments: number,
+  monthlyRatePercent: number,
+  dueDay: number = 22
+): NubankInstallmentItem[] {
+  const pmt = Math.max(0, installmentAmount);
+  const total = Math.max(1, totalInstallments);
+  const remaining = Math.max(0, Math.min(total, remainingInstallments));
+  const paidCount = Math.max(0, total - remaining);
+  const rate = Math.max(0, monthlyRatePercent) / 100;
+
+  if (remaining === 0 || pmt === 0) return [];
+
+  const now = new Date();
+  const currentDay = now.getDate();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  const day = Math.min(31, Math.max(1, dueDay || 22));
+
+  // Determine starting month for the next installment
+  let startYear = currentYear;
+  let startMonth = currentMonth;
+  if (currentDay > day) {
+    startMonth += 1;
+    if (startMonth > 11) {
+      startMonth = 0;
+      startYear += 1;
+    }
+  }
+
+  const items: NubankInstallmentItem[] = [];
+
+  const MONTH_SHORT_PT = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+
+  for (let idx = 0; idx < remaining; idx++) {
+    const parcelNum = paidCount + idx + 1;
+    let parcelYear = startYear;
+    let parcelMonth = startMonth + idx;
+    while (parcelMonth > 11) {
+      parcelMonth -= 12;
+      parcelYear += 1;
+    }
+
+    const daysInMonth = new Date(parcelYear, parcelMonth + 1, 0).getDate();
+    const actualDay = Math.min(day, daysInMonth);
+
+    const parcelDate = new Date(parcelYear, parcelMonth, actualDay, 0, 0, 0);
+    const todayZero = new Date(currentYear, currentMonth, currentDay, 0, 0, 0);
+    const diffMs = parcelDate.getTime() - todayZero.getTime();
+    const daysRemaining = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dueDate = `${pad(actualDay)}/${pad(parcelMonth + 1)}/${parcelYear}`;
+    const dueDateLabel = `${pad(actualDay)} ${MONTH_SHORT_PT[parcelMonth]} ${parcelYear}`;
+
+    // Compound discount pro-rata die matching Nubank formula: PMT / (1 + i)^(days / 30.4167)
+    let discountedAmount = pmt;
+    let savingsAmount = 0;
+    let savingsPercent = 0;
+
+    if (rate > 0) {
+      const monthsAhead = daysRemaining / 30.4167;
+      const discountFactor = Math.pow(1 + rate, monthsAhead);
+      if (discountFactor > 1) {
+        discountedAmount = Math.round((pmt / discountFactor) * 100) / 100;
+        savingsAmount = Math.round((pmt - discountedAmount) * 100) / 100;
+        savingsPercent = Math.round((savingsAmount / pmt) * 1000) / 10;
+      }
+    }
+
+    items.push({
+      number: parcelNum,
+      dueDate,
+      dueDateLabel,
+      daysRemaining,
+      originalAmount: pmt,
+      discountedAmount,
+      savingsAmount,
+      savingsPercent,
+    });
+  }
+
+  return items;
+}
+
+export interface DebtFinancialBreakdown {
+  nominalTotal: number;
+  payoffToday: number;
+  interestSavings: number;
+  ratePercent: number;
+  remainingInstallments: number;
+  totalInstallments: number;
+  paidInstallments: number;
+  installmentAmount: number;
+  dueDay: number;
+  items: NubankInstallmentItem[];
+}
+
+/**
+ * Computes exact debt metrics: nominal remaining payments, net present payoff today, and interest savings
+ */
+export function calculateDebtInterestBreakdown(
+  balancePV: number,
+  installmentAmount: number,
+  remainingInstallments: number,
+  monthlyRatePercent: number,
+  dueDay: number = 22,
+  totalInstallments: number = 9
+): DebtFinancialBreakdown {
+  const n = Math.max(0, remainingInstallments);
+  const pmt = Math.max(0, installmentAmount);
+  const total = Math.max(n, totalInstallments || 9);
+  const paid = Math.max(0, total - n);
+  const nominalTotal = Math.round(n * pmt * 100) / 100;
+
+  const items = calculateNubankInstallmentsBreakdown(pmt, total, n, monthlyRatePercent, dueDay);
+
+  let payoffToday = nominalTotal;
+  if (items.length > 0 && monthlyRatePercent > 0) {
+    payoffToday = Math.round(items.reduce((acc, it) => acc + it.discountedAmount, 0) * 100) / 100;
+  } else if (balancePV > 0 && balancePV < nominalTotal) {
+    payoffToday = balancePV;
+  }
+
+  const interestSavings = Math.max(0, Math.round((nominalTotal - payoffToday) * 100) / 100);
+
+  return {
+    nominalTotal,
+    payoffToday,
+    interestSavings,
+    ratePercent: monthlyRatePercent,
+    remainingInstallments: n,
+    totalInstallments: total,
+    paidInstallments: paid,
+    installmentAmount: pmt,
+    dueDay,
+    items,
+  };
+}
+
+/**
+ * Due Date Status and Countdown for Debt Cards
+ */
+export interface DebtDueDateStatus {
+  formattedDate: string; // e.g. "19/09/2026"
+  daysRemaining: number;
+  isToday: boolean;
+  isUrgent: boolean; // 1 to 5 days
+  isPastDueThisMonth: boolean;
+  statusLabel: string;
+  badgeStyle: 'today' | 'urgent' | 'normal';
+}
+
+export function getDebtDueDateStatus(dueDay: number): DebtDueDateStatus {
+  const now = new Date();
+  const currentDay = now.getDate();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  const day = Math.min(31, Math.max(1, dueDay || 10));
+
+  let targetYear = currentYear;
+  let targetMonth = currentMonth;
+  let isPastDueThisMonth = false;
+
+  if (currentDay > day) {
+    isPastDueThisMonth = true;
+    targetMonth = currentMonth + 1;
+    if (targetMonth > 11) {
+      targetMonth = 0;
+      targetYear++;
+    }
+  }
+
+  const daysInTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const actualTargetDay = Math.min(day, daysInTargetMonth);
+
+  const targetDate = new Date(targetYear, targetMonth, actualTargetDay, 0, 0, 0);
+  const todayDate = new Date(currentYear, currentMonth, currentDay, 0, 0, 0);
+
+  const diffMs = targetDate.getTime() - todayDate.getTime();
+  const daysRemaining = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  const isToday = currentDay === day;
+  const isUrgent = daysRemaining > 0 && daysRemaining <= 5;
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const formattedDate = `${pad(actualTargetDay)}/${pad(targetMonth + 1)}/${targetYear}`;
+
+  let statusLabel = '';
+  let badgeStyle: 'today' | 'urgent' | 'normal' = 'normal';
+
+  if (isToday) {
+    statusLabel = 'Vence HOJE!';
+    badgeStyle = 'today';
+  } else if (isUrgent) {
+    statusLabel = `Vence em ${daysRemaining} ${daysRemaining === 1 ? 'dia' : 'dias'}!`;
+    badgeStyle = 'urgent';
+  } else if (isPastDueThisMonth) {
+    statusLabel = `Próximo: ${formattedDate} (em ${daysRemaining}d)`;
+    badgeStyle = 'normal';
+  } else {
+    statusLabel = `Próximo: ${formattedDate} (em ${daysRemaining}d)`;
+    badgeStyle = 'normal';
+  }
+
+  return {
+    formattedDate,
+    daysRemaining,
+    isToday,
+    isUrgent,
+    isPastDueThisMonth,
+    statusLabel,
+    badgeStyle,
+  };
+}
+

@@ -28,12 +28,14 @@ export const QuickCaptureModal: React.FC = () => {
   const {
     isQuickCaptureOpen,
     setIsQuickCaptureOpen,
+    activeTab,
     addTask,
     addGoal,
     addEvent,
     aiParseAndCreateTask,
     projects,
     isAiLoading,
+    showToast,
   } = useApp();
 
   const {
@@ -41,6 +43,8 @@ export const QuickCaptureModal: React.FC = () => {
     addBill,
   } = useFinance();
 
+  type CaptureType = 'auto' | 'task' | 'finance' | 'event' | 'goal';
+  const [captureType, setCaptureType] = useState<CaptureType>('auto');
   const [input, setInput] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [saveToInbox, setSaveToInbox] = useState(false);
@@ -52,9 +56,14 @@ export const QuickCaptureModal: React.FC = () => {
       setInput('');
       setSelectedProjectId('');
       setSaveToInbox(false);
+      if (activeTab === 'finance') setCaptureType('finance');
+      else if (activeTab === 'agenda' || activeTab === 'calendar') setCaptureType('event');
+      else if (activeTab === 'goals') setCaptureType('goal');
+      else if (activeTab === 'tasks') setCaptureType('task');
+      else setCaptureType('auto');
       setTimeout(() => textareaRef.current?.focus(), 50);
     }
-  }, [isQuickCaptureOpen]);
+  }, [isQuickCaptureOpen, activeTab]);
 
   if (!isQuickCaptureOpen) return null;
 
@@ -67,41 +76,85 @@ export const QuickCaptureModal: React.FC = () => {
     if (!input.trim()) return;
 
     // Check if input is specialized finance / goal / bill
-    if (lifeParsed.type === 'finance' && lifeParsed.transaction && addTransaction) {
+    if (captureType === 'event' && addEvent) {
+      addEvent({
+        title: liveParsed.title || input.trim(),
+        startDate: liveParsed.dueDate || new Date().toISOString().slice(0, 10),
+        startTime: liveParsed.dueTime || '09:00',
+        endTime: '10:00',
+        type: 'event',
+      });
+      showToast('Evento agendado');
+    } else if (lifeParsed.type === 'finance' && lifeParsed.transaction && addTransaction) {
       addTransaction({
-        amount: lifeParsed.transaction.amount,
-        type: lifeParsed.transaction.type,
-        description: lifeParsed.transaction.description,
+        amount: lifeParsed.transaction.amount || 0,
+        type: lifeParsed.transaction.type || 'expense',
+        description: lifeParsed.transaction.description || 'Despesa rápida',
         masterCategory: (lifeParsed.transaction.masterCategory as any) || 'conforto',
         subcategory: lifeParsed.transaction.subcategory || 'Geral',
         date: new Date().toISOString().slice(0, 10),
       });
+      showToast(`Transação registrada: ${formatBRL(lifeParsed.transaction.amount || 0)}`);
+    } else if (captureType === 'finance' && addTransaction && (!lifeParsed.transaction && !lifeParsed.bill)) {
+      const numMatch = input.match(/\d+(?:[.,]\d+)?/);
+      const amount = numMatch ? parseFloat(numMatch[0].replace(',', '.')) : 0;
+      addTransaction({
+        amount: amount || 0,
+        type: 'expense',
+        description: input.trim(),
+        masterCategory: 'conforto',
+        subcategory: 'Geral',
+        date: new Date().toISOString().slice(0, 10),
+      });
+      showToast(`Despesa registrada: ${formatBRL(amount || 0)}`);
     } else if (lifeParsed.type === 'bill' && lifeParsed.bill && addBill) {
+      const billTitle = lifeParsed.bill.title || 'Conta a pagar';
+      const billAmount = lifeParsed.bill.amount || 0;
+      const billDue = lifeParsed.bill.dueDate || new Date().toISOString().slice(0, 10);
+
       addBill({
-        description: lifeParsed.bill.description,
-        amount: lifeParsed.bill.amount,
-        dueDate: lifeParsed.bill.dueDate,
-        category: 'Despesa Fixa',
-        isPaid: false,
-        priority: 'high',
+        title: billTitle,
+        amount: billAmount,
+        dueDate: billDue,
+        masterCategory: lifeParsed.bill.masterCategory || 'custos_fixos',
+        status: 'pending',
+        type: 'expense',
       });
       // Also add a task so it shows in today's or target day's tasks
       addTask({
-        title: `Pagar ${lifeParsed.bill.description} (${formatBRL(lifeParsed.bill.amount)})`,
-        dueDate: lifeParsed.bill.dueDate,
+        title: `Pagar ${billTitle} (${formatBRL(billAmount)})`,
+        dueDate: billDue,
         priority: 'high',
         tags: ['finanças', 'contas'],
       });
+      showToast(`Conta a pagar adicionada: ${billTitle}`);
     } else if (lifeParsed.type === 'goal' && lifeParsed.goal && addGoal) {
       addGoal({
-        title: lifeParsed.goal.title,
-        targetValue: lifeParsed.goal.targetValue,
+        title: lifeParsed.goal.title || 'Nova Meta',
+        targetValue: lifeParsed.goal.targetValue || 1000,
         currentValue: 0,
-        deadline: lifeParsed.goal.deadline,
+        deadline: lifeParsed.goal.deadline || '2027-12-31',
+        period: 'yearly',
         category: 'financeira',
-        status: 'in_progress',
+        unit: 'R$',
+        linkedTaskIds: [],
+        status: 'active',
       });
-    } else if (useAi) {
+      showToast('Meta adicionada');
+    } else if (captureType === 'goal' && addGoal) {
+      addGoal({
+        title: input.trim(),
+        targetValue: 100,
+        currentValue: 0,
+        deadline: '2027-12-31',
+        period: 'yearly',
+        category: 'pessoal',
+        unit: 'unidades',
+        linkedTaskIds: [],
+        status: 'active',
+      });
+      showToast('Meta criada');
+    } else if (useAi && captureType === 'auto') {
       await aiParseAndCreateTask(input);
     } else {
       addTask({
@@ -159,13 +212,51 @@ export const QuickCaptureModal: React.FC = () => {
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-5">
+          {/* Quick Context Switcher (Princípio #9: Botão Universal de Criação) */}
+          <div className="flex items-center gap-1.5 pb-3 overflow-x-auto">
+            {[
+              { id: 'auto', label: 'Inteligente', icon: Zap },
+              { id: 'task', label: 'Tarefa', icon: Check },
+              { id: 'finance', label: 'Finanças', icon: DollarSign },
+              { id: 'event', label: 'Evento', icon: Calendar },
+              { id: 'goal', label: 'Meta', icon: Target },
+            ].map((pill) => {
+              const IconComp = pill.icon;
+              return (
+                <button
+                  key={pill.id}
+                  type="button"
+                  onClick={() => setCaptureType(pill.id as CaptureType)}
+                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold whitespace-nowrap transition-colors ${
+                    captureType === pill.id
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300'
+                  }`}
+                >
+                  <IconComp className="h-3 w-3" />
+                  <span>{pill.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
           <div className="relative">
             <textarea
               ref={textareaRef}
               rows={3}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder='Digite qualquer coisa: "Gastei 42 no Uber", "Pagar faculdade dia 10", "Terminar o site sexta", "Comprar carro 30 mil"'
+              placeholder={
+                captureType === 'finance'
+                  ? 'Ex: "Gastei 45 no almoço", "Pagar internet 120 dia 15", "Recebi 1500 freelance"...'
+                  : captureType === 'task'
+                  ? 'Ex: "Revisar apresentação amanhã às 14h #trabalho !urgente"...'
+                  : captureType === 'event'
+                  ? 'Ex: "Reunião de alinhamento amanhã às 15h"...'
+                  : captureType === 'goal'
+                  ? 'Ex: "Juntar 10000 para reserva até dezembro"...'
+                  : 'Digite qualquer coisa: "Gastei 42 no Uber", "Pagar luz dia 10", "Terminar relatório amanhã"...'
+              }
               className="w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50/70 p-3.5 text-sm text-neutral-900 placeholder-neutral-400 focus:border-indigo-500 focus:outline-none dark:border-neutral-800 dark:bg-neutral-800/40 dark:text-neutral-100 dark:focus:border-indigo-500"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -183,25 +274,25 @@ export const QuickCaptureModal: React.FC = () => {
               {lifeParsed.type === 'finance' && lifeParsed.transaction && (
                 <span className="flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
                   <DollarSign className="h-3 w-3 text-emerald-600" />
-                  Transação: {formatBRL(lifeParsed.transaction.amount)} ({lifeParsed.transaction.description})
+                  Transação: {formatBRL(lifeParsed.transaction.amount || 0)} ({lifeParsed.transaction.description})
                 </span>
               )}
 
               {lifeParsed.type === 'bill' && lifeParsed.bill && (
                 <span className="flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                   <DollarSign className="h-3 w-3 text-amber-600" />
-                  Conta a Pagar: {formatBRL(lifeParsed.bill.amount)} (Venc. {formatDatePT(lifeParsed.bill.dueDate, 'relative')})
+                  Conta a Pagar: {formatBRL(lifeParsed.bill.amount || 0)} (Venc. {formatDatePT(lifeParsed.bill.dueDate || '', 'relative')})
                 </span>
               )}
 
               {lifeParsed.type === 'goal' && lifeParsed.goal && (
                 <span className="flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 font-semibold text-purple-800 dark:border-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
                   <Target className="h-3 w-3 text-purple-600" />
-                  Meta de Longo Prazo: {lifeParsed.goal.title} ({formatBRL(lifeParsed.goal.targetValue)})
+                  Meta de Longo Prazo: {lifeParsed.goal.title} ({formatBRL(lifeParsed.goal.targetValue || 0)})
                 </span>
               )}
 
-              {liveParsed.dueDate && lifeParsed.type === 'task' && (
+              {liveParsed.dueDate && (
                 <span className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 font-medium text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
                   <Calendar className="h-3 w-3 text-indigo-500" />
                   {formatDatePT(liveParsed.dueDate, 'relative')}

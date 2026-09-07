@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useFinance } from '../../context/FinanceContext';
 import { FinanceOverviewTab } from './finance/FinanceOverviewTab';
 import { FinanceBudgetTab } from './finance/FinanceBudgetTab';
@@ -6,10 +6,13 @@ import { FinanceTransactionsTab } from './finance/FinanceTransactionsTab';
 import { FinanceAccountsTab } from './finance/FinanceAccountsTab';
 import { FinanceBillsTab } from './finance/FinanceBillsTab';
 import { FinanceDebtsTab } from './finance/FinanceDebtsTab';
+import { FinanceEmergencyTab } from './finance/FinanceEmergencyTab';
 import { FinanceGoalsTab } from './finance/FinanceGoalsTab';
 import { FinanceInvestmentsTab } from './finance/FinanceInvestmentsTab';
 import { FinanceTransactionModal } from './finance/FinanceTransactionModal';
 import { FinanceDiagnosisModal } from './finance/FinanceDiagnosisModal';
+import { EmergencyConfigModal } from './finance/EmergencyConfigModal';
+import { EmergencyDepositModal } from './finance/EmergencyDepositModal';
 import {
   PieChart,
   DollarSign,
@@ -17,28 +20,26 @@ import {
   CreditCard,
   CalendarClock,
   ShieldAlert,
+  ShieldCheck,
   Target,
   TrendingUp,
   Plus,
   Sparkles,
 } from 'lucide-react';
-
-type FinanceSubTab =
-  | 'overview'
-  | 'budget'
-  | 'transactions'
-  | 'accounts'
-  | 'bills'
-  | 'debts'
-  | 'goals'
-  | 'investments';
+import { FinanceSubTab } from '../../types/finance';
 
 export const FinanceView: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<FinanceSubTab>('overview');
-  const { openTransactionModal, openDiagnosisModal, overdueBills } = useFinance();
+  const {
+    subTab: activeSubTab,
+    setSubTab: setActiveSubTab,
+    openTransactionModal,
+    openDiagnosisModal,
+    overdueBills,
+  } = useFinance();
 
   const navItems: { id: FinanceSubTab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'Visão Geral', icon: <PieChart className="h-4 w-4" /> },
+    { id: 'emergency', label: 'Reserva de Emergência', icon: <ShieldCheck className="h-4 w-4" /> },
     { id: 'budget', label: 'Orçamento Base Zero', icon: <DollarSign className="h-4 w-4" /> },
     { id: 'transactions', label: 'Lançamentos', icon: <ReceiptText className="h-4 w-4" /> },
     { id: 'accounts', label: 'Contas & Cartões', icon: <CreditCard className="h-4 w-4" /> },
@@ -48,7 +49,7 @@ export const FinanceView: React.FC = () => {
       icon: <CalendarClock className="h-4 w-4" />,
       badge: overdueBills.length > 0 ? overdueBills.length : undefined,
     },
-    { id: 'debts', label: 'Dívidas & Reserva', icon: <ShieldAlert className="h-4 w-4" /> },
+    { id: 'debts', label: 'Dívidas', icon: <ShieldAlert className="h-4 w-4" /> },
     { id: 'goals', label: 'Metas', icon: <Target className="h-4 w-4" /> },
     { id: 'investments', label: 'Investimentos', icon: <TrendingUp className="h-4 w-4" /> },
   ];
@@ -123,6 +124,7 @@ export const FinanceView: React.FC = () => {
         {/* Sub Tab Views */}
         <div className="pt-2">
           {activeSubTab === 'overview' && <FinanceOverviewTab />}
+          {activeSubTab === 'emergency' && <FinanceEmergencyTab />}
           {activeSubTab === 'budget' && <FinanceBudgetTab />}
           {activeSubTab === 'transactions' && <FinanceTransactionsTab />}
           {activeSubTab === 'accounts' && <FinanceAccountsTab />}
@@ -136,6 +138,8 @@ export const FinanceView: React.FC = () => {
       {/* Global Modals */}
       <FinanceTransactionModal />
       <FinanceDiagnosisModal />
+      <EmergencyConfigModal />
+      <EmergencyDepositModal />
     </div>
   );
 };

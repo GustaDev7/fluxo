@@ -4,6 +4,23 @@ import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import { sql, eq } from 'drizzle-orm';
+import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
+import * as repo from './src/db/repository.ts';
+import { db } from './src/db/index.ts';
+import {
+  tasks,
+  projects,
+  calendarEvents,
+  notes,
+  goals,
+  habits,
+  timeEntries,
+  financeTransactions,
+  financeBills,
+  financeCards,
+  financeAccounts,
+} from './src/db/schema.ts';
 
 dotenv.config();
 
@@ -11,19 +28,6 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: '10mb' }));
-
-// File storage path
-const DATA_DIR = path.join(process.cwd(), 'data');
-const STORE_FILE = path.join(DATA_DIR, 'store.json');
-
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  } catch (e) {
-    console.error('Failed to create data directory:', e);
-  }
-}
 
 // Lazy Gemini client helper
 let aiClient: GoogleGenAI | null = null;
@@ -46,127 +50,496 @@ function getGeminiClient(): GoogleGenAI | null {
 
 // ================= API ROUTES =================
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Health check & DB connection probe
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbTest = await db.execute(sql`SELECT NOW() as db_time`);
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: 'connected',
+      engine: 'PostgreSQL (Cloud SQL)',
+      dbTime: dbTest.rows[0]?.db_time || null,
+    });
+  } catch (error: any) {
+    console.error('Health check DB error:', error);
+    res.json({
+      status: 'degraded',
+      timestamp: new Date().toISOString(),
+      database: 'error',
+      message: error.message,
+    });
+  }
 });
 
-// GET persistent store status
-app.get('/api/data/status', (req, res) => {
+// GET persistent store status (PostgreSQL database health & counts)
+app.get('/api/data/status', requireAuth, async (req: AuthRequest, res) => {
   try {
-    if (fs.existsSync(STORE_FILE)) {
-      const stats = fs.statSync(STORE_FILE);
-      const content = fs.readFileSync(STORE_FILE, 'utf-8');
-      const data = JSON.parse(content);
-      return res.json({
-        status: 'connected',
-        connected: true,
-        lastModified: stats.mtime.toISOString(),
-        fileSizeBytes: stats.size,
-        counts: {
-          tasks: data.tasks?.length || 0,
-          projects: data.projects?.length || 0,
-          events: data.events?.length || 0,
-          goals: data.goals?.length || 0,
-          habits: data.habits?.length || 0,
-          notes: data.notes?.length || 0,
-          finances: data.monthlyPlan?.finances?.length || 0,
-          timeEntries: data.timeEntries?.length || 0,
-        },
-      });
-    }
-    return res.json({ status: 'connected', connected: true, fileSizeBytes: 0, counts: {} });
+    const userId = req.user!.uid;
+    const [tasks, projects, events, goals, habits, notes, timeEntries, finData] = await Promise.all([
+      repo.getTasksByUserId(userId),
+      repo.getProjectsByUserId(userId),
+      repo.getEventsByUserId(userId),
+      repo.getGoalsByUserId(userId),
+      repo.getHabitsByUserId(userId),
+      repo.getNotesByUserId(userId),
+      repo.getTimeEntriesByUserId(userId),
+      repo.getFinanceDataByUserId(userId),
+    ]);
+
+    return res.json({
+      status: 'connected',
+      connected: true,
+      databaseType: 'PostgreSQL (Cloud SQL) via Drizzle ORM',
+      user: {
+        uid: userId,
+        email: req.user!.email,
+        name: req.user!.name,
+      },
+      counts: {
+        tasks: tasks.length,
+        projects: projects.length,
+        events: events.length,
+        goals: goals.length,
+        habits: habits.length,
+        notes: notes.length,
+        timeEntries: timeEntries.length,
+        financeAccounts: finData.accounts.length,
+        financeCards: finData.cards.length,
+        financeTransactions: finData.transactions.length,
+        financeBills: finData.bills.length,
+        financeDebts: finData.debts.length,
+        financeInvestments: finData.investments.length,
+        financeGoals: finData.goals.length,
+      },
+    });
   } catch (err: any) {
+    console.error('Error fetching data status:', err);
     return res.status(500).json({ status: 'error', error: err.message });
   }
 });
 
-// Clean default empty store
-const CLEAN_EMPTY_STORE = {
-  user: {
-    id: 'user_1',
-    name: '',
-    email: '',
-    avatar: '',
-    role: '',
-    theme: 'light',
-    workStartHour: 8,
-    workEndHour: 18,
-    pomodoroMinutes: 25,
-    shortBreakMinutes: 5,
-    longBreakMinutes: 15,
-    visibleWidgets: {
-      todayTasks: true,
-      overdueTasks: true,
-      upcomingEvents: true,
-      smartPriorities: true,
-      habits: true,
-      goals: true,
-      metrics: true,
-    },
-  },
-  tasks: [],
-  projects: [],
-  events: [],
-  goals: [],
-  habits: [],
-  notes: [],
-  monthlyPlan: {
-    month: new Date().toISOString().slice(0, 7),
-    objectives: [],
-    finances: [],
-    focusNotes: '',
-  },
-  notifications: [],
-  timeEntries: [],
-};
-
-// GET persistent store
-app.get('/api/data', (req, res) => {
+// GET persistent store (productivity data directly from Cloud SQL PostgreSQL)
+app.get('/api/data', requireAuth, async (req: AuthRequest, res) => {
   try {
-    if (fs.existsSync(STORE_FILE)) {
-      const content = fs.readFileSync(STORE_FILE, 'utf-8');
-      if (content.includes('Alexandre') || content.includes('Cliente Beta') || content.includes('task_1')) {
-        fs.writeFileSync(STORE_FILE, JSON.stringify(CLEAN_EMPTY_STORE, null, 2), 'utf-8');
-        return res.json(CLEAN_EMPTY_STORE);
-      }
-      return res.json(JSON.parse(content));
-    }
-    fs.writeFileSync(STORE_FILE, JSON.stringify(CLEAN_EMPTY_STORE, null, 2), 'utf-8');
-    return res.json(CLEAN_EMPTY_STORE);
-  } catch (err) {
-    console.error('Error reading store file:', err);
-    return res.status(500).json({ error: 'Failed to read data store' });
+    const userId = req.user!.uid;
+    const [tasks, projects, events, goals, habits, notes, timeEntries] = await Promise.all([
+      repo.getTasksByUserId(userId),
+      repo.getProjectsByUserId(userId),
+      repo.getEventsByUserId(userId),
+      repo.getGoalsByUserId(userId),
+      repo.getHabitsByUserId(userId),
+      repo.getNotesByUserId(userId),
+      repo.getTimeEntriesByUserId(userId),
+    ]);
+
+    return res.json({
+      user: {
+        id: userId,
+        name: req.user!.name || '',
+        email: req.user!.email || '',
+        avatar: req.user!.picture || '',
+        role: 'Pro',
+        theme: 'light',
+        workStartHour: 8,
+        workEndHour: 18,
+        pomodoroMinutes: 25,
+        shortBreakMinutes: 5,
+        longBreakMinutes: 15,
+        visibleWidgets: {
+          todayTasks: true,
+          overdueTasks: true,
+          upcomingEvents: true,
+          smartPriorities: true,
+          habits: true,
+          goals: true,
+          metrics: true,
+        },
+      },
+      tasks: tasks.map((t) => ({
+        ...t,
+        tags: Array.isArray(t.tags) ? t.tags : [],
+        checklist: Array.isArray(t.checklist) ? t.checklist : [],
+        subtasks: Array.isArray(t.subtasks) ? t.subtasks : [],
+        dependencies: Array.isArray(t.dependencies) ? t.dependencies : [],
+        reminders: Array.isArray(t.reminders) ? t.reminders : [],
+        comments: Array.isArray(t.comments) ? t.comments : [],
+        attachments: Array.isArray(t.attachments) ? t.attachments : [],
+      })),
+      projects: projects.map((p) => ({
+        ...p,
+        members: Array.isArray(p.members) ? p.members : [],
+        routines: Array.isArray(p.routines) ? p.routines : [],
+        links: Array.isArray(p.links) ? p.links : [],
+        workLogs: Array.isArray(p.workLogs) ? p.workLogs : [],
+      })),
+      events: events.map((e) => ({
+        ...e,
+        participants: Array.isArray(e.participants) ? e.participants : [],
+      })),
+      goals: goals.map((g) => ({
+        ...g,
+        targetValue: Number(g.targetValue),
+        currentValue: Number(g.currentValue),
+        linkedTaskIds: Array.isArray(g.linkedTaskIds) ? g.linkedTaskIds : [],
+      })),
+      habits: habits.map((h) => ({
+        ...h,
+        completedDates: Array.isArray(h.completedDates) ? h.completedDates : [],
+      })),
+      notes: notes.map((n) => ({
+        ...n,
+        tags: Array.isArray(n.tags) ? n.tags : [],
+        blocks: Array.isArray(n.blocks) ? n.blocks : [],
+      })),
+      timeEntries,
+      monthlyPlan: {
+        month: new Date().toISOString().slice(0, 7),
+        objectives: [],
+        finances: [],
+        focusNotes: '',
+      },
+      notifications: [],
+    });
+  } catch (err: any) {
+    console.error('Error reading data store from DB:', err);
+    return res.status(500).json({ error: 'Failed to read data from PostgreSQL' });
   }
 });
 
-// POST save persistent store (atomic write to prevent corruption)
-app.post('/api/data', (req, res) => {
+// POST save persistent store to Cloud SQL PostgreSQL
+app.post('/api/data', requireAuth, async (req: AuthRequest, res) => {
   try {
+    const userId = req.user!.uid;
     const data = req.body;
-    // Discard any incoming data that still carries legacy mock data
-    if (data?.user?.name === 'Alexandre Mendes' || (Array.isArray(data?.tasks) && data.tasks.some((t: any) => t.id === 'task_1'))) {
-      fs.writeFileSync(STORE_FILE, JSON.stringify(CLEAN_EMPTY_STORE, null, 2), 'utf-8');
-      return res.json({ success: true, savedAt: new Date().toISOString(), sanitized: true });
-    }
-    const tempFile = `${STORE_FILE}.tmp`;
-    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
-    fs.renameSync(tempFile, STORE_FILE);
+
+    await repo.syncProductivityStore(userId, data);
     return res.json({ success: true, savedAt: new Date().toISOString() });
-  } catch (err) {
-    console.error('Error writing store file:', err);
-    return res.status(500).json({ error: 'Failed to write data store' });
+  } catch (err: any) {
+    console.error('Error saving data store to DB:', err);
+    return res.status(500).json({ error: 'Failed to save data to PostgreSQL' });
   }
 });
 
-// POST reset persistent store
-app.post('/api/data/reset', (req, res) => {
+// GET finance data directly from PostgreSQL
+app.get('/api/finance', requireAuth, async (req: AuthRequest, res) => {
   try {
-    fs.writeFileSync(STORE_FILE, JSON.stringify(CLEAN_EMPTY_STORE, null, 2), 'utf-8');
-    return res.json({ success: true });
-  } catch (err) {
-    console.error('Error resetting store file:', err);
-    return res.status(500).json({ error: 'Failed to reset data store' });
+    const userId = req.user!.uid;
+    const finData = await repo.getFinanceDataByUserId(userId);
+    return res.json({
+      accounts: finData.accounts,
+      creditCards: finData.cards,
+      transactions: finData.transactions,
+      bills: finData.bills,
+      debts: finData.debts,
+      installments: [],
+      emergencyFund: {
+        targetAmount: 0,
+        currentAmount: 0,
+        monthlyContribution: 0,
+        targetMonths: 6,
+      },
+      goals: finData.goals,
+      investments: finData.investments,
+      budget: {
+        month: new Date().toISOString().slice(0, 7),
+        plannedIncome: 0,
+        allocations: {
+          custos_fixos: 0,
+          conforto: 0,
+          metas: 0,
+          prazeres: 0,
+          liberdade_financeira: 0,
+          conhecimento: 0,
+        },
+        notes: '',
+      },
+      closings: [],
+      diagnosis: {
+        monthlyIncome: 0,
+        isIncomeVariable: false,
+        fixedCosts: 0,
+        comfortCosts: 0,
+        leisureCosts: 0,
+        currentDebtTotal: 0,
+        monthlyDebtPayment: 0,
+        emergencyFundAmount: 0,
+        currentInvested: 0,
+        monthlyTargetInvestment: 0,
+        mainGoals: '',
+      },
+    });
+  } catch (err: any) {
+    console.error('Error reading finance data from DB:', err);
+    return res.status(500).json({ error: 'Failed to read finance database' });
+  }
+});
+
+// POST save finance data to PostgreSQL
+app.post('/api/finance', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    await repo.syncFinanceStore(userId, req.body);
+    return res.json({ success: true, savedAt: new Date().toISOString() });
+  } catch (err: any) {
+    console.error('Error saving finance data to DB:', err);
+    return res.status(500).json({ error: 'Failed to save finance database' });
+  }
+});
+
+// Finance Granular Deletions
+app.delete('/api/finance/accounts/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const ok = await repo.deleteFinanceAccount(req.user!.uid, req.params.id);
+    res.json({ success: ok });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/finance/cards/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const ok = await repo.deleteFinanceCard(req.user!.uid, req.params.id);
+    res.json({ success: ok });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/finance/transactions/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const ok = await repo.deleteFinanceTransaction(req.user!.uid, req.params.id);
+    res.json({ success: ok });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/finance/bills/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const ok = await repo.deleteFinanceBill(req.user!.uid, req.params.id);
+    res.json({ success: ok });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/finance/debts/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const ok = await repo.deleteFinanceDebt(req.user!.uid, req.params.id);
+    res.json({ success: ok });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/finance/investments/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const ok = await repo.deleteFinanceInvestment(req.user!.uid, req.params.id);
+    res.json({ success: ok });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/finance/goals/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const ok = await repo.deleteFinanceGoal(req.user!.uid, req.params.id);
+    res.json({ success: ok });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Dedicated CRUD routes for granular operations
+// Tasks
+app.get('/api/tasks', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const items = await repo.getTasksByUserId(req.user!.uid);
+    res.json(items);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/tasks', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const item = await repo.upsertTask(req.user!.uid, req.body);
+    res.json(item);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/tasks/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const deleted = await repo.deleteTask(req.user!.uid, req.params.id);
+    res.json({ success: deleted });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Projects
+app.get('/api/projects', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const items = await repo.getProjectsByUserId(req.user!.uid);
+    res.json(items);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/projects', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const item = await repo.upsertProject(req.user!.uid, req.body);
+    res.json(item);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/projects/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const deleted = await repo.deleteProject(req.user!.uid, req.params.id);
+    res.json({ success: deleted });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Events
+app.get('/api/events', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const items = await repo.getEventsByUserId(req.user!.uid);
+    res.json(items);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/events', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const item = await repo.upsertEvent(req.user!.uid, req.body);
+    res.json(item);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/events/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const deleted = await repo.deleteEvent(req.user!.uid, req.params.id);
+    res.json({ success: deleted });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Notes
+app.get('/api/notes', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const items = await repo.getNotesByUserId(req.user!.uid);
+    res.json(items);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/notes', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const item = await repo.upsertNote(req.user!.uid, req.body);
+    res.json(item);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/notes/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const deleted = await repo.deleteNote(req.user!.uid, req.params.id);
+    res.json({ success: deleted });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Goals
+app.get('/api/goals', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const items = await repo.getGoalsByUserId(req.user!.uid);
+    res.json(items);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/goals', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const item = await repo.upsertGoal(req.user!.uid, req.body);
+    res.json(item);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/goals/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const deleted = await repo.deleteGoal(req.user!.uid, req.params.id);
+    res.json({ success: deleted });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Habits
+app.get('/api/habits', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const items = await repo.getHabitsByUserId(req.user!.uid);
+    res.json(items);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/habits', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const item = await repo.upsertHabit(req.user!.uid, req.body);
+    res.json(item);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/habits/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const deleted = await repo.deleteHabit(req.user!.uid, req.params.id);
+    res.json({ success: deleted });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reset database for user
+app.post('/api/data/reset', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    // Delete items belonging to user in cascade/order
+    await db.delete(tasks).where(eq(tasks.userId, userId));
+    await db.delete(projects).where(eq(projects.userId, userId));
+    await db.delete(calendarEvents).where(eq(calendarEvents.userId, userId));
+    await db.delete(notes).where(eq(notes.userId, userId));
+    await db.delete(goals).where(eq(goals.userId, userId));
+    await db.delete(habits).where(eq(habits.userId, userId));
+    await db.delete(timeEntries).where(eq(timeEntries.userId, userId));
+    await db.delete(financeTransactions).where(eq(financeTransactions.userId, userId));
+    await db.delete(financeBills).where(eq(financeBills.userId, userId));
+    await db.delete(financeCards).where(eq(financeCards.userId, userId));
+    await db.delete(financeAccounts).where(eq(financeAccounts.userId, userId));
+    return res.json({ success: true, message: 'Dados do usuário limpos no banco de dados' });
+  } catch (err: any) {
+    console.error('Error resetting user store in DB:', err);
+    return res.status(500).json({ error: 'Failed to reset user data' });
   }
 });
 
@@ -490,201 +863,6 @@ Você deve retornar APENAS um JSON com o seguinte formato:
       actions: [],
     });
   }
-});
-
-// ================= WHATSAPP OMNICHANNEL & LIFE OS ENDPOINTS =================
-
-let whatsappConnectionState = {
-  connected: true,
-  phoneNumber: '+55 11 98765-4321',
-  botName: 'Fluxo AI Assistant',
-  webhookUrl: 'https://ais-dev-psixgtqv5cysy2wf5vcrfv-191371251739.us-east1.run.app/api/integrations/whatsapp/webhook',
-  messagesCount: 18,
-  lastSyncAt: new Date().toISOString(),
-};
-
-// GET WhatsApp Status
-app.get('/api/integrations/whatsapp/status', (req, res) => {
-  return res.json(whatsappConnectionState);
-});
-
-// POST WhatsApp Connect / Toggle
-app.post('/api/integrations/whatsapp/connect', (req, res) => {
-  const { action } = req.body;
-  if (action === 'disconnect') {
-    whatsappConnectionState.connected = false;
-  } else {
-    whatsappConnectionState.connected = true;
-    whatsappConnectionState.lastSyncAt = new Date().toISOString();
-  }
-  return res.json(whatsappConnectionState);
-});
-
-// POST WhatsApp Process Command / Message
-app.post('/api/integrations/whatsapp/message', async (req, res) => {
-  try {
-    const { message, systemContext = {} } = req.body;
-    if (!message) {
-      return res.status(400).json({ error: 'Mensagem é obrigatória' });
-    }
-
-    whatsappConnectionState.messagesCount += 1;
-    whatsappConnectionState.lastSyncAt = new Date().toISOString();
-
-    const ai = getGeminiClient();
-    const currentDate = new Date().toISOString().slice(0, 10);
-    const lower = message.toLowerCase();
-
-    // Context summary
-    const {
-      tasks = [],
-      projects = [],
-      events = [],
-      bills = [],
-      goals = [],
-      habits = [],
-      budget = {},
-    } = systemContext;
-
-    if (!ai) {
-      // Offline fallback with rich responses matching user's requested examples
-      if (lower.includes('uber') || (lower.includes('gastei') && lower.includes('42'))) {
-        return res.json({
-          reply: `✅ *Despesa registrada com sucesso!*\n\n💸 *Valor:* R$ 42,00\n🚗 *Categoria:* Conforto (Transporte Uber)\n🏦 *Conta:* Nubank\n📊 *Orçamento restante:* R$ 858,00 nesta categoria.`,
-          actions: [
-            {
-              type: 'create_transaction',
-              summary: 'Despesa R$ 42,00 em Uber (Conforto / Transporte)',
-              data: { amount: 42, description: 'Uber Transporte', masterCategory: 'conforto', subcategory: 'Transporte', type: 'expense' },
-            },
-          ],
-          quickReplies: ['Quanto posso gastar esse mês?', 'Como estão minhas finanças?', 'O que preciso fazer hoje?'],
-        });
-      }
-
-      if (lower.includes('site') || lower.includes('terminar o site')) {
-        return res.json({
-          reply: `✅ *Tarefa agendada!*\n\n📝 *Tarefa:* Terminar o site\n📅 *Prazo:* Próxima sexta-feira\n⚡ *Prioridade:* Alta\n📁 *Projeto:* Desenvolvimento Web\n\nAdicionado à sua lista e ao calendário do Fluxo.`,
-          actions: [
-            {
-              type: 'create_task',
-              summary: 'Tarefa: Terminar o site para sexta-feira',
-              data: { title: 'Terminar o site', priority: 'high', tags: ['projeto', 'web'] },
-            },
-          ],
-          quickReplies: ['O que preciso fazer hoje?', 'Minhas tarefas da semana'],
-        });
-      }
-
-      if (lower.includes('o que eu preciso fazer hoje') || lower.includes('o que tenho hoje') || lower.includes('fazer hoje')) {
-        return res.json({
-          reply: `📋 *Seu resumo de hoje no Fluxo:*\n\n🔥 *Prioridade máxima:* Finalizar wireframes e revisão de código\n⏰ *Tarefas:* 3 pendentes para hoje\n📅 *Agenda:* Reunião de alinhamento às 15:00\n💰 *Finanças:* 1 conta de R$ 240 (Faculdade) com vencimento próximo\n\nQuer que eu marque alguma como concluída?`,
-          actions: [],
-          quickReplies: ['Concluir primeira tarefa', 'Quais contas vencem essa semana?', 'Iniciar foco 25m'],
-        });
-      }
-
-      if (lower.includes('quanto posso gastar') || lower.includes('minhas finanças')) {
-        return res.json({
-          reply: `💰 *Diagnóstico Financeiro Rápido (AUVP):*\n\n🟢 *Renda planejada:* R$ 6.000,00\n💳 *Gastos acumulados:* R$ 3.840,00 (64% do teto)\n✨ *Margem livre restante no mês:* R$ 1.160,00\n🎯 *Aporte de Liberdade Financeira:* R$ 1.000 (Garantido no dia 10)\n\nVocê está dentro do equilíbrio de Orçamento Base Zero!`,
-          actions: [],
-          quickReplies: ['Quais contas vencem essa semana?', 'Quanto falta para minha meta do carro?'],
-        });
-      }
-
-      if (lower.includes('carro') || lower.includes('meta do carro')) {
-        return res.json({
-          reply: `🚗 *Meta: Comprar Carro Próprio*\n\n🎯 *Alvo:* R$ 30.000,00 até Dez/2027\n💰 *Acumulado atual:* R$ 12.500,00 (41.6% concluído)\n⏳ *Faltam:* R$ 17.500,00 (aprox. 23 aportes de R$ 770/mês)\n📈 *Próximo aporte:* Dia 10 na Renda Fixa IPCA+.`,
-          actions: [],
-          quickReplies: ['Lançar aporte de R$ 770', 'Como está minha vida?'],
-        });
-      }
-
-      if (lower.includes('como está minha vida')) {
-        return res.json({
-          reply: `🌟 *Visão 360° da sua Vida no Fluxo:*\n\n⏱️ *Tempo:* 18 tarefas esta semana, 89% em dia.\n💼 *Trabalho:* 2 projetos ativos com prazos confortáveis.\n💰 *Finanças:* R$ 1.160 disponíveis, taxa de poupança em 25%.\n🎯 *Metas:* Meta do Carro em 41.6% e Reserva de Emergência 100% cheia.\n🔥 *Hábitos:* Sequência de 12 dias mantida no treino e leitura.\n📅 *Agenda:* 1 compromisso hoje às 15h.`,
-          actions: [],
-          quickReplies: ['O que preciso fazer hoje?', 'Quais contas vencem essa semana?'],
-        });
-      }
-
-      return res.json({
-        reply: `Recebi sua mensagem: "${message}". Registrei a solicitação na central de inteligência do Fluxo!`,
-        actions: [],
-        quickReplies: ['O que preciso fazer hoje?', 'Como estão minhas finanças?', 'Como está minha vida?'],
-      });
-    }
-
-    const systemInstruction = `Você é o bot oficial do Fluxo no WhatsApp.
-O Fluxo é a "extensão digital da vida do usuário", um sistema operacional que conecta:
-Tempo, Tarefas, Projetos, Agenda, Finanças (metodologia AUVP), Metas, Hábitos e Lembretes.
-
-O usuário está digitando pelo WHATSAPP.
-Você deve responder exatamente no formato visual do WhatsApp:
-- Use formatação de WhatsApp (*negrito*, _itálico_, quebras de linha limpas, emojis funcionais).
-- Seja direto, conciso, executivo e resolutivo. Evite enrolações.
-- Quando o usuário relata uma informação (ex: "Gastei 42 reais no Uber", "Tenho que pagar a faculdade dia 10", "Recebi 2 mil reais", "Cria tarefa para sexta"), você DEVE gerar as ações correspondentes no array de "actions".
-- Se o usuário perguntar "Como está minha vida?", "Quanto posso gastar?", "O que tenho hoje?", "Quanto falta para minha meta do carro?", formule uma resposta integrada e precisa usando os dados do sistema.
-
-Data atual de referência: ${currentDate}.
-
-Responda estritamente em JSON:
-{
-  "reply": "Texto formatado para WhatsApp com emojis",
-  "actions": [
-    // { "type": "create_task" | "create_transaction" | "create_bill" | "create_event" | "create_goal" | "complete_task", "data": { ... } }
-  ],
-  "quickReplies": ["Pergunta 1", "Pergunta 2"]
-}`;
-
-    const promptText = `Mensagem recebida no WhatsApp: "${message}".\nContexto do Usuário: ${JSON.stringify({
-      currentDate,
-      pendingTasksCount: tasks.length,
-      activeProjectsCount: projects.length,
-      todayEventsCount: events.length,
-      pendingBillsCount: bills.length,
-      goalsSummary: goals.map((g: any) => ({ title: g.title, target: g.targetValue, current: g.currentValue })),
-      habitsSummary: habits.map((h: any) => ({ name: h.name, streak: h.currentStreak })),
-    })}`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: promptText,
-      config: {
-        systemInstruction,
-        responseMimeType: 'application/json',
-      },
-    });
-
-    const text = response.text?.trim() || '{}';
-    const parsed = JSON.parse(text);
-
-    return res.json({
-      reply: parsed.reply || 'Comando processado pelo Fluxo.',
-      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-      quickReplies: Array.isArray(parsed.quickReplies) ? parsed.quickReplies : ['O que preciso fazer hoje?', 'Como está minha vida?'],
-    });
-  } catch (err: any) {
-    console.error('WhatsApp message error:', err);
-    return res.status(500).json({ error: err.message || 'Falha ao processar mensagem do WhatsApp' });
-  }
-});
-
-// Webhook endpoint for WhatsApp Meta API / External bridges
-app.post('/api/integrations/whatsapp/webhook', (req, res) => {
-  console.log('WhatsApp Webhook received event:', req.body);
-  return res.json({ status: 'received', timestamp: new Date().toISOString() });
-});
-
-// Webhook verification endpoint for Meta API
-app.get('/api/integrations/whatsapp/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-  if (mode === 'subscribe' && token === 'fluxo_webhook_token') {
-    return res.send(challenge);
-  }
-  return res.send(challenge || 'ok');
 });
 
 // ================= VITE MIDDLEWARE & SERVER START =================

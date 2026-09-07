@@ -102,24 +102,24 @@ export const AssistantView: React.FC = () => {
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col bg-neutral-50 dark:bg-neutral-950">
+    <div className="flex h-[calc(100dvh-4rem)] flex-col bg-neutral-50 dark:bg-neutral-950">
       {/* Top Header Bar */}
-      <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-4 dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-600/20">
-            <Sparkles className="h-5 w-5 animate-pulse" />
+      <div className="flex flex-wrap items-center justify-between border-b border-neutral-200 bg-white px-4 py-3 sm:px-6 sm:py-4 dark:border-neutral-800 dark:bg-neutral-900 gap-2">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-600/20 shrink-0">
+            <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+              <h1 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-neutral-100">
                 Assistente & Copiloto IA
               </h1>
-              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] sm:text-xs font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
                 <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-ping" />
-                Gemini 3.8 Flash
+                Gemini
               </span>
             </div>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            <p className="hidden sm:block text-xs text-neutral-500 dark:text-neutral-400">
               Interação fluída por voz ou texto com autonomia para agir diretamente no sistema
             </p>
           </div>
@@ -234,19 +234,23 @@ export const AssistantView: React.FC = () => {
                 {/* Suggestions Grid */}
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
                   {[
-                    '🎙️ Criar uma tarefa urgente para enviar o relatório hoje às 17h',
-                    '📅 Agendar alinhamento de produto amanhã às 10h',
-                    '📋 Quais são as tarefas pendentes no sistema hoje?',
-                    '🚀 Criar novo projeto chamado Lançamento',
-                  ].map((sugg, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleSendMessage(sugg.replace('🎙️ ', '').replace('📅 ', '').replace('📋 ', '').replace('🚀 ', ''))}
-                      className="rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/60 hover:text-indigo-700 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
-                    >
-                      {sugg}
-                    </button>
-                  ))}
+                    { icon: Mic, text: 'Criar uma tarefa urgente para enviar o relatório hoje às 17h' },
+                    { icon: Calendar, text: 'Agendar alinhamento de produto amanhã às 10h' },
+                    { icon: CheckSquare, text: 'Quais são as tarefas pendentes no sistema hoje?' },
+                    { icon: Zap, text: 'Criar novo projeto chamado Lançamento' },
+                  ].map((sugg, idx) => {
+                    const Icon = sugg.icon;
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => handleSendMessage(sugg.text)}
+                        className="flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/60 hover:text-indigo-700 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                      >
+                        <Icon className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                        <span>{sugg.text}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -515,12 +519,12 @@ export const AssistantView: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-400 dark:text-neutral-500">
-            <span className="flex items-center gap-1">
-              <Zap className="h-3 w-3 text-indigo-500" />
-              Dica: Você pode pedir para criar tarefas, concluir itens, agendar eventos ou consultar sua carga de trabalho.
+          <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-400 dark:text-neutral-500 gap-2 flex-wrap">
+            <span className="flex items-center gap-1 line-clamp-1 sm:line-clamp-none">
+              <Zap className="h-3 w-3 text-indigo-500 shrink-0" />
+              <span>Dica: Peça para criar tarefas, concluir itens ou agendar eventos.</span>
             </span>
-            <span>Enter para enviar</span>
+            <span className="hidden sm:inline shrink-0">Enter para enviar</span>
           </div>
         </div>
       </div>

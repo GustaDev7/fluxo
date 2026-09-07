@@ -19,6 +19,8 @@ import {
   Target,
   FolderKanban,
   HelpCircle,
+  Bot,
+  PenLine,
 } from 'lucide-react';
 
 interface LifeMemoriesModalProps {
@@ -313,8 +315,18 @@ export const LifeMemoriesModal: React.FC<LifeMemoriesModalProps> = ({ isOpen, on
                         <span className="rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-semibold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
                           {categoryLabels[mem.category]}
                         </span>
-                        <span className="text-[10px] text-neutral-400">
-                          {mem.source === 'auto_inferred' ? '🤖 Aprendido' : '✍️ Manual'}
+                        <span className="flex items-center gap-1 text-[10px] text-neutral-400">
+                          {mem.source === 'auto_inferred' ? (
+                            <>
+                              <Bot className="h-3 w-3 inline text-purple-500" />
+                              <span>Aprendido</span>
+                            </>
+                          ) : (
+                            <>
+                              <PenLine className="h-3 w-3 inline text-neutral-500" />
+                              <span>Manual</span>
+                            </>
+                          )}
                         </span>
                       </div>
 

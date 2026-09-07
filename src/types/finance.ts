@@ -226,6 +226,7 @@ export interface FinancialHealthScore {
 
 export type FinanceSubTab =
   | 'overview'
+  | 'emergency'
   | 'budget'
   | 'transactions'
   | 'accounts'

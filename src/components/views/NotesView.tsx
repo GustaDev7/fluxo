@@ -12,6 +12,7 @@ import {
   AlertCircle,
   FolderKanban,
   Search,
+  ChevronLeft,
 } from 'lucide-react';
 import { NotePage, NoteBlock } from '../../types';
 
@@ -29,6 +30,7 @@ export const NotesView: React.FC = () => {
 
   const [selectedNoteId, setSelectedNoteId] = useState<string>(notes[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isMobileViewingEditor, setIsMobileViewingEditor] = useState<boolean>(false);
 
   const currentNote = notes.find((n) => n.id === selectedNoteId);
 
@@ -41,9 +43,9 @@ export const NotesView: React.FC = () => {
   const handleCreateNote = () => {
     const newNote = addNote({
       title: 'Documento Sem Título',
-      icon: '📄',
     });
     setSelectedNoteId(newNote.id);
+    setIsMobileViewingEditor(true);
   };
 
   const blockTypeIcons: Record<NoteBlock['type'], React.ComponentType<{ className?: string }>> = {
@@ -61,7 +63,7 @@ export const NotesView: React.FC = () => {
   return (
     <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
       {/* Left Sidebar: Notes Library */}
-      <div className="w-64 sm:w-72 border-r border-neutral-200 bg-neutral-50/70 p-4 dark:border-neutral-800 dark:bg-neutral-900/60 flex flex-col">
+      <div className={`w-full md:w-64 sm:md:w-72 border-r border-neutral-200 bg-neutral-50/70 p-4 dark:border-neutral-800 dark:bg-neutral-900/60 flex flex-col ${isMobileViewingEditor ? 'hidden md:flex' : 'flex'}`}>
         <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-800">
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
@@ -95,15 +97,18 @@ export const NotesView: React.FC = () => {
             return (
               <div
                 key={note.id}
-                onClick={() => setSelectedNoteId(note.id)}
-                className={`group flex items-center justify-between rounded-xl px-3 py-2 text-xs transition-colors cursor-pointer ${
+                onClick={() => {
+                  setSelectedNoteId(note.id);
+                  setIsMobileViewingEditor(true);
+                }}
+                className={`group flex items-center justify-between rounded-xl px-3 py-2.5 text-xs transition-colors cursor-pointer min-h-[44px] ${
                   isSelected
                     ? 'bg-indigo-50 font-bold text-indigo-900 dark:bg-indigo-950/60 dark:text-indigo-200'
                     : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800/60'
                 }`}
               >
                 <div className="flex items-center gap-2 truncate">
-                  <span className="text-base">{note.icon || '📝'}</span>
+                  <FileText className="h-4 w-4 shrink-0 text-neutral-400 group-hover:text-indigo-600" />
                   <span className="truncate">{note.title || 'Sem título'}</span>
                 </div>
 
@@ -112,10 +117,12 @@ export const NotesView: React.FC = () => {
                     e.stopPropagation();
                     deleteNote(note.id);
                     if (selectedNoteId === note.id) {
-                      setSelectedNoteId(notes.find((n) => n.id !== note.id)?.id || '');
+                      const remaining = notes.find((n) => n.id !== note.id);
+                      setSelectedNoteId(remaining?.id || '');
+                      if (!remaining) setIsMobileViewingEditor(false);
                     }
                   }}
-                  className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-rose-500 p-1"
+                  className="opacity-60 md:opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-rose-500 p-1.5"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -126,19 +133,24 @@ export const NotesView: React.FC = () => {
       </div>
 
       {/* Main Document Content / Notion-like Block Editor */}
-      <div className="flex-1 overflow-y-auto p-6 sm:p-10 bg-white dark:bg-neutral-900">
+      <div className={`flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 bg-white dark:bg-neutral-900 ${isMobileViewingEditor ? 'flex flex-col' : 'hidden md:flex flex-col'}`}>
         {currentNote ? (
-          <div className="max-w-3xl mx-auto space-y-6">
-            {/* Header: Title & Project Link */}
+          <div className="max-w-3xl mx-auto space-y-6 w-full">
+            {/* Header: Title & Project Link & Mobile Back button */}
             <div className="space-y-3 pb-4 border-b border-neutral-100 dark:border-neutral-800">
-              <div className="flex items-center justify-between">
-                <input
-                  type="text"
-                  value={currentNote.icon || '📄'}
-                  onChange={(e) => updateNote(currentNote.id, { icon: e.target.value })}
-                  className="w-10 text-2xl bg-transparent text-center focus:outline-none"
-                  title="Emoji do Documento"
-                />
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsMobileViewingEditor(false)}
+                    className="md:hidden flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-semibold text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span>Notas</span>
+                  </button>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                </div>
 
                 <div className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-800">
                   <FolderKanban className="h-3.5 w-3.5 text-neutral-400" />

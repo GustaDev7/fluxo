@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useFinance } from '../../context/FinanceContext';
 import { FluxoLogo, FluxoEmblemImage } from '../FluxoLogo';
 import {
   Settings,
@@ -13,6 +14,7 @@ import {
   Shield,
   Clock,
   Check,
+  CheckCircle2,
   Calendar,
   FileSpreadsheet,
   Keyboard,
@@ -52,6 +54,19 @@ export const SettingsView: React.FC = () => {
     setActiveTab,
   } = useApp();
 
+  const {
+    accounts,
+    creditCards,
+    transactions,
+    bills,
+    debts,
+    investments,
+    isFinanceDbConnected,
+    isFinanceDbSaving,
+    lastFinanceDbSyncedAt,
+    forceFinanceDbSync,
+  } = useFinance();
+
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [dailyReminders, setDailyReminders] = useState(true);
   const [deadlineAlerts, setDeadlineAlerts] = useState(true);
@@ -63,9 +78,13 @@ export const SettingsView: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isAnyDbSaving = isDbSaving || isFinanceDbSaving;
+  const isAllDbConnected = isDbConnected && isFinanceDbConnected;
+
   const handleManualSync = async () => {
-    const ok = await forceDbSync();
-    if (ok) {
+    const okProd = await forceDbSync();
+    const okFin = await forceFinanceDbSync();
+    if (okProd && okFin) {
       setDbSyncSuccess(true);
       setTimeout(() => setDbSyncSuccess(false), 2500);
     }
@@ -205,7 +224,12 @@ export const SettingsView: React.FC = () => {
 
             <div className="flex items-center justify-between pt-2">
               <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                {savedSuccess && '✓ Perfil atualizado com sucesso!'}
+                {savedSuccess && (
+                  <span className="flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5 inline" />
+                    <span>Perfil atualizado com sucesso!</span>
+                  </span>
+                )}
               </span>
               <button
                 type="submit"
@@ -386,31 +410,31 @@ export const SettingsView: React.FC = () => {
 
             <div className="flex items-center gap-2">
               <span className="relative flex h-2.5 w-2.5">
-                {isDbConnected && !isDbSaving && (
+                {isAllDbConnected && !isAnyDbSaving && (
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                 )}
                 <span
                   className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
-                    isDbSaving
+                    isAnyDbSaving
                       ? 'bg-amber-400 animate-pulse'
-                      : isDbConnected
+                      : isAllDbConnected
                       ? 'bg-emerald-500'
                       : 'bg-rose-500'
                   }`}
                 />
               </span>
               <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-                {isDbSaving
-                  ? 'Salvando no banco...'
-                  : isDbConnected
-                  ? 'Banco Conectado e Ativo'
+                {isAnyDbSaving
+                  ? 'Gravando no banco...'
+                  : isAllDbConnected
+                  ? 'Banco Conectado e Ativo (100% Sincronizado)'
                   : 'Modo Offline (Gravando local)'}
               </span>
             </div>
           </div>
 
           <p className="text-xs text-neutral-500 leading-relaxed">
-            Todos os campos de tarefas, projetos, eventos, metas, hábitos, notas e finanças estão conectados diretamente ao banco de dados do sistema com gravação atômica e recuperação instantânea.
+            100% dos dados do aplicativo — incluindo Tarefas, Projetos, Eventos, Hábitos, Metas, Notas, e todo o módulo financeiro (Contas bancárias, Cartões, Transações, Contas a Pagar, Dívidas e Investimentos) — estão agora conectados e persistidos diretamente no banco de dados do servidor com salvamento atômico contínuo.
           </p>
 
           {/* Database Metrics Grid */}
@@ -420,43 +444,43 @@ export const SettingsView: React.FC = () => {
               <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">{tasks.length}</p>
             </div>
             <div className="rounded-xl border border-neutral-100 bg-neutral-50/80 p-3 dark:border-neutral-800/80 dark:bg-neutral-800/40">
-              <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Projetos</span>
-              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">{projects.length}</p>
-            </div>
-            <div className="rounded-xl border border-neutral-100 bg-neutral-50/80 p-3 dark:border-neutral-800/80 dark:bg-neutral-800/40">
-              <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Agenda / Eventos</span>
-              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">{events.length}</p>
+              <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Projetos & Eventos</span>
+              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">{projects.length + events.length}</p>
             </div>
             <div className="rounded-xl border border-neutral-100 bg-neutral-50/80 p-3 dark:border-neutral-800/80 dark:bg-neutral-800/40">
               <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Metas & Hábitos</span>
               <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">{(goals?.length || 0) + (habits?.length || 0)}</p>
             </div>
             <div className="rounded-xl border border-neutral-100 bg-neutral-50/80 p-3 dark:border-neutral-800/80 dark:bg-neutral-800/40">
-              <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Notas / Cadernos</span>
+              <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Notas & Cadernos</span>
               <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">{notes?.length || 0}</p>
             </div>
             <div className="rounded-xl border border-neutral-100 bg-neutral-50/80 p-3 dark:border-neutral-800/80 dark:bg-neutral-800/40">
-              <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Finanças Mensais</span>
-              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">{monthlyPlan?.finances?.length || 0}</p>
+              <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Contas & Cartões</span>
+              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">{(accounts?.length || 0) + (creditCards?.length || 0)}</p>
             </div>
             <div className="rounded-xl border border-neutral-100 bg-neutral-50/80 p-3 dark:border-neutral-800/80 dark:bg-neutral-800/40">
-              <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Sessões Pomodoro</span>
-              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">{timeEntries?.length || 0}</p>
+              <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Transações no Banco</span>
+              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">{transactions?.length || 0}</p>
+            </div>
+            <div className="rounded-xl border border-neutral-100 bg-neutral-50/80 p-3 dark:border-neutral-800/80 dark:bg-neutral-800/40">
+              <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Contas & Dívidas</span>
+              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">{(bills?.length || 0) + (debts?.length || 0)}</p>
             </div>
             <div className="rounded-xl border border-neutral-100 bg-neutral-50/80 p-3 dark:border-neutral-800/80 dark:bg-neutral-800/40">
               <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">Último Sync</span>
-              <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 mt-1">{lastDbSyncedAt || 'Ao vivo'}</p>
+              <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 mt-1">{lastDbSyncedAt || lastFinanceDbSyncedAt || 'Ao vivo'}</p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
               onClick={handleManualSync}
-              disabled={isDbSaving}
+              disabled={isAnyDbSaving}
               className="flex items-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isDbSaving ? 'animate-spin' : ''}`} />
-              <span>{isDbSaving ? 'Gravando...' : 'Sincronizar com Banco Agora'}</span>
+              <RefreshCw className={`h-3.5 w-3.5 ${isAnyDbSaving ? 'animate-spin' : ''}`} />
+              <span>{isAnyDbSaving ? 'Gravando...' : 'Sincronizar Tudo com Banco Agora'}</span>
             </button>
 
             {dbSyncSuccess && (
