@@ -607,7 +607,8 @@ export function calculateAmortizationEstimate(
   const pmt = Math.max(0, installmentAmount);
   const rate = Math.max(0, monthlyInterestRatePercent) / 100;
 
-  const originalTotalPaid = remMonths * pmt;
+  const originalTotalPaidDecimal = new Decimal(remMonths).mul(pmt);
+  const originalTotalPaid = originalTotalPaidDecimal.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
 
   // Use exact present value (principal / saldo devedor contábil) as basis for interest calculation
   const calculatedPV = rate > 0 ? calculateBalancePrice(pmt, remMonths, monthlyInterestRatePercent) : remMonths * pmt;
@@ -615,31 +616,29 @@ export function calculateAmortizationEstimate(
 
   const originalInterest = Math.max(0, originalTotalPaid - principalBase);
 
-  let balance = principalBase;
+  let balance = new Decimal(principalBase);
   let months = 0;
-  let totalPaid = 0;
-  let totalInterest = 0;
-  const maxIterations = 360;
+  let totalPaid = new Decimal(0);
+  let totalInterest = new Decimal(0);
+  const rateDecimal = new Decimal(rate);
+  const regularPayment = new Decimal(pmt).plus(extraMonthly);
+  const maxIterations = 1000;
 
-  while (balance > 0.01 && months < maxIterations) {
+  while (balance.gt('0.005') && months < maxIterations) {
     months++;
-    const monthlyInterest = balance * rate;
-    let payment = pmt + extraMonthly;
-
-    if (payment > balance + monthlyInterest) {
-      payment = balance + monthlyInterest;
-    }
-
-    const principal = Math.max(0, payment - monthlyInterest);
-    totalInterest += monthlyInterest;
-    totalPaid += payment;
-    balance = Math.max(0, balance - principal);
+    const monthlyInterest = balance.mul(rateDecimal);
+    const amountDue = balance.plus(monthlyInterest);
+    const payment = Decimal.min(regularPayment, amountDue);
+    const principal = Decimal.max(0, payment.minus(monthlyInterest));
+    totalInterest = totalInterest.plus(monthlyInterest);
+    totalPaid = totalPaid.plus(payment);
+    balance = Decimal.max(0, balance.minus(principal));
   }
 
   const newMonths = months > 0 ? months : remMonths;
   const monthsSaved = Math.max(0, remMonths - newMonths);
-  const newTotalPaid = totalPaid > 0 ? totalPaid : originalTotalPaid;
-  const newInterest = totalInterest > 0 ? totalInterest : originalInterest;
+  const newTotalPaid = totalPaid.gt(0) ? totalPaid.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber() : originalTotalPaid;
+  const newInterest = totalInterest.gt(0) ? totalInterest.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber() : originalInterest;
   const interestSaved = Math.max(0, originalTotalPaid - newTotalPaid);
 
   const now = new Date();
