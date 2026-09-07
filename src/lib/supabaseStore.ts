@@ -145,10 +145,24 @@ export async function saveProductivityData(userId: string, data: any) {
   if (planError) throw planError;
 }
 
-export async function loadFinanceData() {
-  const [accountRows, cardRows, transactionRows, billRows, debtRows, investmentRows, goalRows, emergencyRows, preferenceRows, termRows, installmentRows, paymentRows] =
-    await Promise.all([rows('finance_accounts'), rows('finance_cards'), rows('finance_transactions'), rows('finance_bills'), rows('finance_debts'), rows('finance_investments'), rows('financial_goals'), rows('emergency_funds'), rows('finance_preferences'), rows('debt_terms'), rows('debt_installments'), rows('debt_payments')]);
+export async function loadFinanceData(userId: string) {
+  const ownedRows = async (table: string) => {
+    const { data, error } = await supabase.from(table).select('*').eq('user_id', userId);
+    if (error) throw error;
+    return (data ?? []) as Row[];
+  };
+  const [accountRows, cardRows, transactionRows, billRows, debtRows, investmentRows, goalRows, emergencyRows, preferenceRows, termRows, installmentRows, paymentRows, budgetRows, incomeSourceRows, budgetCategoryRows] =
+    await Promise.all([ownedRows('finance_accounts'), ownedRows('finance_cards'), ownedRows('finance_transactions'), ownedRows('finance_bills'), ownedRows('finance_debts'), ownedRows('finance_investments'), ownedRows('financial_goals'), ownedRows('emergency_funds'), ownedRows('finance_preferences'), ownedRows('debt_terms'), ownedRows('debt_installments'), ownedRows('debt_payments'), ownedRows('monthly_budgets'), ownedRows('budget_income_sources'), ownedRows('budget_categories')]);
   const preferences = preferenceRows[0] || {};
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const normalizedBudget = [...budgetRows].sort((a, b) => String(b.month).localeCompare(String(a.month))).find((row) => String(row.month).slice(0, 7) === currentMonth) || budgetRows[0];
+  const legacyBudget = preferences.budget;
+  const loadedBudget = normalizedBudget ? {
+    ...(legacyBudget || {}), id: normalizedBudget.id, month: String(normalizedBudget.month).slice(0, 7),
+    notes: normalizedBudget.notes || '', viewMode: normalizedBudget.view_mode, advancedMode: normalizedBudget.advanced_mode,
+    incomeSources: incomeSourceRows.filter((r) => r.budget_id === normalizedBudget.id).sort((a,b) => a.sort_order-b.sort_order).map((r) => ({ id:r.id,name:r.name,type:r.source_type,plannedAmount:Number(r.planned_amount),receivedAmount:Number(r.received_amount),recurring:r.recurring })),
+    categories: budgetCategoryRows.filter((r) => r.budget_id === normalizedBudget.id).sort((a,b) => a.priority-b.priority).map((r) => ({ id:r.id,parentId:r.parent_id||undefined,masterCategory:r.master_category||undefined,name:r.name,description:r.description||undefined,color:r.color,icon:r.icon||undefined,allocationMode:r.allocation_mode,percentage:String(r.percentage),fixedAmount:Number(r.fixed_amount),plannedAmount:Number(r.planned_amount),spendingLimit:r.spending_limit===null?undefined:Number(r.spending_limit),priority:r.priority,archived:r.archived })),
+  } : legacyBudget;
   return {
     accounts: accountRows.map((r) => ({ id: r.id, name: r.name, bank: r.institution || '', type: r.type, balance: Number(r.balance), initialBalance: Number(r.initial_balance), color: r.color || '#3b82f6', icon: r.icon, isActive: r.is_active })),
     creditCards: cardRows.map((r) => ({ id: r.id, name: r.name, bank: r.institution || '', limit: Number(r.credit_limit), availableLimit: Number(r.available_limit), closingDay: r.closing_day, dueDay: r.due_day, color: r.color || '#6366f1', linkedAccountId: r.linked_account_id || undefined, currentInvoice: Number(r.current_invoice), nextInvoice: Number(r.next_invoice) })),
@@ -159,7 +173,7 @@ export async function loadFinanceData() {
     goals: goalRows.map((r) => ({ id: r.id, title: r.title, targetAmount: Number(r.target_amount), currentAmount: Number(r.current_amount), monthlyContribution: Number(r.monthly_contribution), deadline: r.deadline, masterCategory: 'metas', color: r.color || '#10b981', notes: r.notes })),
     emergencyFund: emergencyRows[0] ? { targetAmount: Number(emergencyRows[0].target_amount), currentAmount: Number(emergencyRows[0].current_amount), monthlyContribution: Number(emergencyRows[0].monthly_contribution), targetMonths: emergencyRows[0].target_months } : null,
     installments: preferences.installments || [],
-    budget: preferences.budget,
+    budget: loadedBudget,
     closings: preferences.closing_history || [],
     diagnosis: preferences.diagnosis,
   };
@@ -180,4 +194,28 @@ export async function saveFinanceData(userId: string, data: any) {
   if (emergencyError) throw emergencyError;
   const { error: preferencesError } = await supabase.from('finance_preferences').upsert({ user_id: userId, installments: data.installments, budget: data.budget, closing_history: data.closings, diagnosis: data.diagnosis, updated_at: new Date().toISOString() });
   if (preferencesError) throw preferencesError;
+
+  if (data.budget?.categories) {
+    const monthDate = `${data.budget.month}-01`;
+    const budgetPayload: Row = {
+      user_id: userId, month: monthDate, notes: data.budget.notes || null,
+      view_mode: data.budget.viewMode || 'cards', advanced_mode: Boolean(data.budget.advancedMode), updated_at: new Date().toISOString(),
+    };
+    if (data.budget.id) budgetPayload.id = data.budget.id;
+    const { data: budgetRow, error: budgetError } = await supabase.from('monthly_budgets').upsert(budgetPayload, { onConflict: 'user_id,month' }).select('id').single();
+    if (budgetError) throw budgetError;
+    const persistedBudgetId = budgetRow.id;
+    const { error: clearIncomeError } = await supabase.from('budget_income_sources').delete().eq('user_id', userId).eq('budget_id', persistedBudgetId);
+    if (clearIncomeError) throw clearIncomeError;
+    if (data.budget.incomeSources?.length) {
+      const { error } = await supabase.from('budget_income_sources').insert(data.budget.incomeSources.map((item: any, index: number) => ({ id:item.id,user_id:userId,budget_id:persistedBudgetId,name:item.name,source_type:item.type,planned_amount:item.plannedAmount,received_amount:item.receivedAmount,recurring:item.recurring,sort_order:index })));
+      if (error) throw error;
+    }
+    const { error: clearCategoryError } = await supabase.from('budget_categories').delete().eq('user_id', userId).eq('budget_id', persistedBudgetId);
+    if (clearCategoryError) throw clearCategoryError;
+    if (data.budget.categories.length) {
+      const { error } = await supabase.from('budget_categories').insert(data.budget.categories.map((item: any) => ({ id:item.id,user_id:userId,budget_id:persistedBudgetId,parent_id:item.parentId||null,master_category:item.masterCategory||null,name:item.name,description:item.description||null,color:item.color,icon:item.icon||null,allocation_mode:item.allocationMode,percentage:item.percentage,fixed_amount:item.fixedAmount,planned_amount:item.plannedAmount,spending_limit:item.spendingLimit??null,priority:item.priority,archived:item.archived })));
+      if (error) throw error;
+    }
+  }
 }
