@@ -120,7 +120,53 @@ export interface FinanceDebt {
   endDate?: string;
   priority: 'urgent' | 'high' | 'medium' | 'low';
   notes?: string;
-  status: 'active' | 'paid';
+  status: 'draft' | 'active' | 'overdue' | 'renegotiated' | 'paid' | 'cancelled' | 'suspended';
+  name?: string;
+  description?: string;
+  financedPrincipal?: number;
+  incorporatedCosts?: number;
+  totalContracted?: number;
+  ratePeriod?: 'daily' | 'monthly' | 'annual';
+  rateKind?: 'nominal' | 'effective';
+  interestRegime?: 'simple' | 'compound';
+  amortizationSystem?: 'price' | 'sac' | 'no_interest';
+  firstDueDate?: string;
+  calculationVersion?: string;
+  schedule?: DebtInstallment[];
+  termId?: string;
+  payments?: DebtPayment[];
+}
+
+export interface DebtPayment {
+  id: string;
+  installmentId?: string;
+  accountId?: string;
+  transactionId?: string;
+  amount: number;
+  principalAmount: number;
+  interestAmount: number;
+  fineAmount: number;
+  chargesAmount: number;
+  paidOn: string;
+  status: 'completed' | 'reversed';
+  idempotencyKey: string;
+}
+
+export interface DebtInstallment {
+  id: string;
+  number: number;
+  dueDate: string;
+  openingBalance: number;
+  principalDue: number;
+  interestDue: number;
+  fineDue: number;
+  chargesDue: number;
+  scheduledAmount: number;
+  paidAmount: number;
+  closingBalance: number;
+  status: 'pending' | 'partial' | 'paid' | 'overdue' | 'cancelled';
+  paidAt?: string;
+  transactionId?: string;
 }
 
 export interface EmergencyFund {

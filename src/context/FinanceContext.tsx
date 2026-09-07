@@ -16,6 +16,7 @@ import {
   TransactionType,
   FinancialHealthScore,
 } from '../types/finance';
+import { generateSchedule } from '../domain/debtEngine';
 import {
   INITIAL_ACCOUNTS,
   INITIAL_CREDIT_CARDS,
@@ -631,7 +632,42 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Debts
   const addDebt = useCallback((debtData: Omit<FinanceDebt, 'id'>) => {
     const newId = crypto.randomUUID();
-    setDebts((prev) => [...prev, { ...debtData, id: newId }]);
+    const today = new Date();
+    const dueDay = Math.min(debtData.dueDay || 10, 28);
+    const firstDueDate = debtData.firstDueDate || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`;
+    const installmentsToGenerate = Math.max(1, debtData.remainingInstallments || debtData.totalInstallments);
+    const paidOffset = Math.max(0, debtData.totalInstallments - debtData.remainingInstallments);
+    const schedule = generateSchedule({
+      principal: debtData.financedPrincipal || debtData.originalAmount,
+      annualOrPeriodRatePercent: debtData.interestRateMonthly,
+      ratePeriod: debtData.ratePeriod || 'monthly',
+      installments: installmentsToGenerate,
+      system: debtData.amortizationSystem || 'price',
+      firstDueDate,
+    });
+    setDebts((prev) => [...prev, {
+      ...debtData,
+      id: newId,
+      name: debtData.name || debtData.creditor,
+      financedPrincipal: debtData.financedPrincipal || debtData.originalAmount,
+      incorporatedCosts: debtData.incorporatedCosts || 0,
+      totalContracted: debtData.totalContracted || debtData.originalAmount,
+      firstDueDate,
+      ratePeriod: debtData.ratePeriod || 'monthly',
+      rateKind: debtData.rateKind || 'effective',
+      interestRegime: debtData.interestRegime || 'compound',
+      amortizationSystem: debtData.amortizationSystem || 'price',
+      calculationVersion: schedule.calculationVersion,
+      termId: crypto.randomUUID(),
+      currentBalance: Number(schedule.principal),
+      installmentAmount: Number(schedule.entries[0]?.installment || 0),
+      schedule: schedule.entries.map((row) => ({
+        id: crypto.randomUUID(), number: row.number + paidOffset, dueDate: row.dueDate,
+        openingBalance: Number(row.openingBalance), principalDue: Number(row.amortization), interestDue: Number(row.interest),
+        fineDue: 0, chargesDue: 0, scheduledAmount: Number(row.installment), paidAmount: 0,
+        closingBalance: Number(row.closingBalance), status: 'pending',
+      })),
+    }]);
   }, []);
 
   const updateDebt = useCallback((id: string, updates: Partial<FinanceDebt>) => {
@@ -646,29 +682,40 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     (debtId: string, accountId?: string) => {
       const debt = debts.find((d) => d.id === debtId);
       if (!debt) return;
-
+      const nextInstallment = debt.schedule?.find((item) => item.status === 'pending' || item.status === 'overdue' || item.status === 'partial');
+      const principalPaid = nextInstallment?.principalDue ?? Math.min(debt.currentBalance, debt.installmentAmount);
+      const paymentAmount = nextInstallment?.scheduledAmount ?? debt.installmentAmount;
       const newRemaining = Math.max(0, debt.remainingInstallments - 1);
-      const newBalance = Math.max(0, debt.currentBalance - debt.installmentAmount);
+      const newBalance = Math.max(0, debt.currentBalance - principalPaid);
       const isPaid = newRemaining === 0 || newBalance === 0;
 
-      updateDebt(debtId, {
-        remainingInstallments: newRemaining,
-        currentBalance: newBalance,
-        status: isPaid ? 'paid' : 'active',
-      });
-
+      let transactionId: string | undefined;
       if (accountId) {
-        addTransaction({
+        transactionId = addTransaction({
           type: 'debt_payment',
-          amount: debt.installmentAmount,
+          amount: paymentAmount,
           date: getTodayDateString(),
           description: `Amortização Dívida: ${debt.creditor} (${debt.totalInstallments - newRemaining}/${debt.totalInstallments})`,
           masterCategory: 'custos_fixos',
           subcategory: 'Amortização de Dívida',
           accountId,
           tags: ['dívida', 'amortização'],
-        });
+        }).id;
       }
+      const paymentId = crypto.randomUUID();
+      updateDebt(debtId, {
+        remainingInstallments: newRemaining,
+        currentBalance: newBalance,
+        status: isPaid ? 'paid' : 'active',
+        schedule: debt.schedule?.map((item) => item.id === nextInstallment?.id ? { ...item, status: 'paid', paidAmount: paymentAmount, paidAt: new Date().toISOString(), transactionId } : item),
+        payments: [...(debt.payments || []), {
+          id: paymentId, installmentId: nextInstallment?.id, accountId, transactionId,
+          amount: paymentAmount, principalAmount: principalPaid,
+          interestAmount: nextInstallment?.interestDue || 0, fineAmount: nextInstallment?.fineDue || 0,
+          chargesAmount: nextInstallment?.chargesDue || 0, paidOn: getTodayDateString(), status: 'completed',
+          idempotencyKey: `installment:${nextInstallment?.id || debtId}:${newRemaining}`,
+        }],
+      });
     },
     [debts, updateDebt, addTransaction]
   );
@@ -678,13 +725,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const debt = debts.find((d) => d.id === debtId);
       if (!debt) return;
 
+      const paidInstallments = debt.schedule?.filter((item) => item.status === 'paid') || [];
+      const lastPaid = paidInstallments.at(-1);
       const newRemaining = Math.min(debt.totalInstallments, debt.remainingInstallments + 1);
-      const newBalance = debt.currentBalance + debt.installmentAmount;
+      const newBalance = debt.currentBalance + (lastPaid?.principalDue ?? debt.installmentAmount);
 
       updateDebt(debtId, {
         remainingInstallments: newRemaining,
         currentBalance: newBalance,
         status: 'active',
+        schedule: debt.schedule?.map((item) => item.id === lastPaid?.id ? { ...item, status: 'pending', paidAmount: 0, paidAt: undefined, transactionId: undefined } : item),
+        payments: debt.payments?.map((payment) => payment.installmentId === lastPaid?.id && payment.status === 'completed' ? { ...payment, status: 'reversed' } : payment),
       });
 
       // Remove the latest debt_payment transaction for this creditor if exists

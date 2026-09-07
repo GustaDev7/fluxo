@@ -78,6 +78,7 @@ export const FinanceDebtsTab: React.FC = () => {
   const [paidInst, setPaidInst] = useState('0');
   const [dueDay, setDueDay] = useState('10');
   const [priority, setPriority] = useState<FinanceDebt['priority']>('high');
+  const [amortizationSystem, setAmortizationSystem] = useState<'price' | 'sac' | 'no_interest'>('price');
 
   // Edit Form Fields
   const [editCreditor, setEditCreditor] = useState('');
@@ -101,6 +102,7 @@ export const FinanceDebtsTab: React.FC = () => {
     setPaidInst('0');
     setDueDay('10');
     setPriority('high');
+    setAmortizationSystem('price');
     setIsAddDebtOpen(true);
   };
 
@@ -213,6 +215,10 @@ export const FinanceDebtsTab: React.FC = () => {
       installmentAmount: installmentNum,
       dueDay: parseInt(dueDay, 10) || 10,
       priority,
+      amortizationSystem,
+      ratePeriod: 'monthly',
+      rateKind: 'effective',
+      interestRegime: 'compound',
       status: remainingInstNum === 0 ? 'paid' : 'active',
     });
 
@@ -543,7 +549,9 @@ export const FinanceDebtsTab: React.FC = () => {
               const total = Math.max(1, debt.totalInstallments);
               const remaining = Math.max(0, Math.min(total, debt.remainingInstallments));
               const paid = Math.max(0, total - remaining);
-              const paidPercent = Math.round((paid / total) * 100);
+              const financedPrincipal = debt.financedPrincipal || debt.originalAmount;
+              const paidPercent = financedPrincipal > 0 ? Math.round(((financedPrincipal - debt.currentBalance) / financedPrincipal) * 100) : 0;
+              const nextInstallment = debt.schedule?.find((item) => item.status === 'pending' || item.status === 'partial' || item.status === 'overdue');
               const dueDateStatus = getDebtDueDateStatus(debt.dueDay || 10);
               const interestBreakdown = calculateDebtInterestBreakdown(
                 debt.currentBalance,
@@ -689,10 +697,10 @@ export const FinanceDebtsTab: React.FC = () => {
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-neutral-500 dark:text-neutral-400">
-                        Progresso de Quitação: <strong>{paid} de {total} parcelas pagas</strong>
+                        Principal amortizado: <strong>{formatBRL(Math.max(0, financedPrincipal - debt.currentBalance))}</strong>
                       </span>
                       <span className="font-bold text-neutral-800 dark:text-neutral-200">
-                        {paidPercent}% quitado
+                        {paidPercent}% do principal
                       </span>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
@@ -702,6 +710,15 @@ export const FinanceDebtsTab: React.FC = () => {
                       />
                     </div>
                   </div>
+
+                  {nextInstallment && debt.status !== 'paid' && (
+                    <div className="grid grid-cols-2 gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 text-xs dark:border-indigo-950 dark:bg-indigo-950/20 sm:grid-cols-4">
+                      <div><span className="block text-[10px] text-neutral-500">Próxima parcela</span><strong>{formatBRL(nextInstallment.scheduledAmount)}</strong></div>
+                      <div><span className="block text-[10px] text-neutral-500">Amortização</span><strong className="text-emerald-600">{formatBRL(nextInstallment.principalDue)}</strong></div>
+                      <div><span className="block text-[10px] text-neutral-500">Juros</span><strong className="text-amber-600">{formatBRL(nextInstallment.interestDue)}</strong></div>
+                      <div><span className="block text-[10px] text-neutral-500">Saldo após pagar</span><strong>{formatBRL(nextInstallment.closingBalance)}</strong></div>
+                    </div>
+                  )}
 
                   {/* Detalhes Financeiros: Data de Vencimento e Juros da Tabela Price */}
                   {debt.status === 'active' && remaining > 0 && (
@@ -884,6 +901,16 @@ export const FinanceDebtsTab: React.FC = () => {
                 <span className="text-[10px] text-neutral-400 block mt-1">
                   Base fundamental dos cálculos e amortizações
                 </span>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">Sistema de amortização</label>
+                <select value={amortizationSystem} onChange={(e) => setAmortizationSystem(e.target.value as typeof amortizationSystem)} className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs font-bold text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100">
+                  <option value="price">Tabela Price — parcela fixa</option>
+                  <option value="sac">SAC — parcela decrescente</option>
+                  <option value="no_interest">Parcelas sem juros</option>
+                </select>
+                <span className="mt-1 block text-[10px] text-neutral-400">O cronograma separará principal e juros parcela por parcela.</span>
               </div>
 
               <div>

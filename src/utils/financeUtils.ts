@@ -9,6 +9,8 @@ import {
   ZeroBasedBudget,
   FinancialHealthScore,
 } from '../types/finance';
+import Decimal from 'decimal.js';
+import { pricePayment } from '../domain/debtEngine';
 
 export const MASTER_CATEGORY_CONFIG: Record<
   MasterCategory,
@@ -651,8 +653,8 @@ export function calculateAmortizationEstimate(
   const estimatedPayoffDate = getMonthYear(newMonths);
 
   // Antecipação da última parcela com desconto (Tabela Price / CDC)
-  const discountFactor = Math.pow(1 + rate, remMonths);
-  const discountedAmount = rate > 0 && discountFactor > 1 ? pmt / discountFactor : pmt;
+  const discountFactor = new Decimal(1).plus(rate).pow(remMonths);
+  const discountedAmount = rate > 0 && discountFactor.gt(1) ? new Decimal(pmt).div(discountFactor).toNumber() : pmt;
   const discountSaved = Math.max(0, pmt - discountedAmount);
   const discountPercent = pmt > 0 ? (discountSaved / pmt) * 100 : 0;
 
@@ -692,8 +694,7 @@ export function calculateInstallmentPrice(
   const i = Math.max(0, monthlyRatePercent) / 100;
   if (pv === 0) return 0;
   if (i === 0) return Math.round((pv / n) * 100) / 100;
-  const pmt = pv * (i / (1 - Math.pow(1 + i, -n)));
-  return Math.round(pmt * 100) / 100;
+  return pricePayment(pv, monthlyRatePercent, n).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
 }
 
 /**
@@ -711,8 +712,9 @@ export function calculateBalancePrice(
   const i = Math.max(0, monthlyRatePercent) / 100;
   if (pmt === 0) return 0;
   if (i === 0) return Math.round(pmt * n * 100) / 100;
-  const pv = pmt * ((1 - Math.pow(1 + i, -n)) / i);
-  return Math.round(pv * 100) / 100;
+  const rate = new Decimal(i);
+  const pv = new Decimal(pmt).mul(new Decimal(1).minus(rate.plus(1).pow(-n)).div(rate));
+  return pv.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
 }
 
 export interface NubankInstallmentItem {
@@ -793,11 +795,11 @@ export function calculateNubankInstallmentsBreakdown(
     let savingsPercent = 0;
 
     if (rate > 0) {
-      const monthsAhead = daysRemaining / 30.4167;
-      const discountFactor = Math.pow(1 + rate, monthsAhead);
-      if (discountFactor > 1) {
-        discountedAmount = Math.round((pmt / discountFactor) * 100) / 100;
-        savingsAmount = Math.round((pmt - discountedAmount) * 100) / 100;
+      const periodsAhead = new Decimal(daysRemaining).mul(12).div(365);
+      const discountFactor = new Decimal(1).plus(rate).pow(periodsAhead);
+      if (discountFactor.gt(1)) {
+        discountedAmount = new Decimal(pmt).div(discountFactor).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
+        savingsAmount = new Decimal(pmt).minus(discountedAmount).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
         savingsPercent = Math.round((savingsAmount / pmt) * 1000) / 10;
       }
     }
