@@ -1,6 +1,6 @@
 import React from 'react';
 import { useFinance } from '../../../context/FinanceContext';
-import { formatBRL, formatPercent } from '../../../utils/financeUtils';
+import { formatBRL } from '../../../utils/financeUtils';
 import {
   TrendingUp,
   Wallet,
@@ -29,7 +29,7 @@ export const FinanceOverviewTab: React.FC = () => {
     monthExpenses,
     monthInvestments,
     debts,
-    savingsRate,
+    emergencyFund,
     healthScore,
     emergencyCoverage,
     overdueBills,
@@ -44,6 +44,10 @@ export const FinanceOverviewTab: React.FC = () => {
   } = useFinance();
 
   const totalDebts = debts.reduce((acc, d) => (d.status === 'active' ? acc + d.currentBalance : 0), 0);
+  const emergencyFundProgress =
+    emergencyFund.targetAmount > 0
+      ? Math.min(100, (emergencyFund.currentAmount / emergencyFund.targetAmount) * 100)
+      : 0;
 
   // Variation compared to previous month closing (if recorded)
   const previousClosing = monthlyClosingHistory.length > 0 ? monthlyClosingHistory[0] : null;
@@ -165,17 +169,25 @@ export const FinanceOverviewTab: React.FC = () => {
           <div className="mt-1 text-[10px] text-neutral-400">Saldo a amortizar</div>
         </div>
 
-        {/* 7. Taxa de Poupança */}
-        <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        {/* 7. Reserva de Emergência */}
+        <button
+          type="button"
+          onClick={() => setSubTab('emergency')}
+          className="rounded-2xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800/70"
+        >
           <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1.5">
-            <span className="text-xs font-semibold">Poupança</span>
+            <span className="text-xs font-semibold">Reserva de Emergência</span>
             <ShieldCheck className="h-4 w-4 text-blue-500" />
           </div>
           <div className="text-lg font-black text-blue-600 dark:text-blue-400 truncate">
-            {formatPercent(savingsRate)}
+            {formatBRL(emergencyFund.currentAmount)}
           </div>
-          <div className="mt-1 text-[10px] text-neutral-400">Meta AUVP: 20%+</div>
-        </div>
+          <div className="mt-1 text-[10px] text-neutral-400">
+            {emergencyFund.targetAmount > 0
+              ? `${emergencyFundProgress.toFixed(0)}% da meta`
+              : 'Configure sua meta de segurança'}
+          </div>
+        </button>
       </div>
 
       {/* Main Grid: Left Financial Pulse & Right Zero-Based Status + Health Score */}

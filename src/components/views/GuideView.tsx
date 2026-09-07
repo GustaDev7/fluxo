@@ -38,7 +38,6 @@ export const GuideView: React.FC = () => {
     setIsCommandPaletteOpen,
     setIsShortcutsOpen,
     clearToCleanSlate,
-    resetToSampleData,
   } = useApp();
 
   const [activeCategory, setActiveCategory] = useState<'start' | 'modules' | 'workflows' | 'shortcuts' | 'faq'>('start');
@@ -696,7 +695,7 @@ export const GuideView: React.FC = () => {
         </div>
       )}
 
-      {/* Clean Slate vs Sample Data helper block in Guide */}
+      {/* Clean workspace helper block in Guide */}
       <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-6 dark:border-neutral-800 dark:bg-neutral-900/60 space-y-4">
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
@@ -705,7 +704,7 @@ export const GuideView: React.FC = () => {
           </h3>
         </div>
         <p className="text-xs text-neutral-600 dark:text-neutral-400">
-          Você pode iniciar com o espaço 100% limpo ou alternar de volta para os dados de exemplo quando desejar.
+          O Fluxo começa vazio e armazena somente os seus dados reais.
         </p>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -721,17 +720,6 @@ export const GuideView: React.FC = () => {
             Iniciar Meu Espaço Limpo (Começar do Zero)
           </button>
 
-          <button
-            onClick={() => {
-              if (window.confirm('Deseja recarregar os dados de exemplo para demonstração?')) {
-                resetToSampleData();
-              }
-            }}
-            className="flex items-center gap-1.5 rounded-xl border border-neutral-300 bg-white px-3.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span>Recarregar Exemplos</span>
-          </button>
         </div>
       </div>
     </div>

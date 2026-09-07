@@ -40,6 +40,8 @@ import {
   importTransactionsFromCSV,
 } from '../utils/financeUtils';
 import { useApp } from './AppContext';
+import { useAuth } from './AuthContext';
+import { loadFinanceData, saveFinanceData } from '../lib/supabaseStore';
 import { getTodayDateString } from '../utils/date';
 
 interface FinanceContextType {
@@ -154,28 +156,9 @@ interface FinanceContextType {
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
-// Aggressive one-time purge for any previous sample financial data (Nubank, Inter, Dell XPS, etc.)
-if (typeof window !== 'undefined') {
-  const isFinPurged = localStorage.getItem('cp_fin_clean_purged_v3');
-  if (!isFinPurged) {
-    localStorage.removeItem('cp_fin_accounts');
-    localStorage.removeItem('cp_fin_cards');
-    localStorage.removeItem('cp_fin_transactions');
-    localStorage.removeItem('cp_fin_bills');
-    localStorage.removeItem('cp_fin_debts');
-    localStorage.removeItem('cp_fin_installments');
-    localStorage.removeItem('cp_fin_emergency');
-    localStorage.removeItem('cp_fin_goals');
-    localStorage.removeItem('cp_fin_investments');
-    localStorage.removeItem('cp_fin_budget');
-    localStorage.removeItem('cp_fin_closings');
-    localStorage.removeItem('cp_fin_diagnosis');
-    localStorage.setItem('cp_fin_clean_purged_v3', 'true');
-  }
-}
-
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { addTask, addNotification, setSelectedTaskId, setActiveTab: setGlobalActiveTab } = useApp();
+  const { user: authUser } = useAuth();
 
   // Navigation subTab
   const [subTab, setSubTab] = useState<FinanceSubTab>('overview');
@@ -186,157 +169,29 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isDiagnosisModalOpen, setIsDiagnosisModalOpen] = useState(false);
 
   // Entities with persistence (strictly sanitized from any previous sample data)
-  const [accounts, setAccounts] = useState<FinanceAccount[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_accounts');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed)
-        ? parsed.filter((a) => a && !a.id?.includes('nubank') && !a.id?.includes('inter') && !a.id?.includes('carteira'))
-        : [];
-    } catch {
-      return [];
-    }
-  });
+  const [accounts, setAccounts] = useState<FinanceAccount[]>([]);
 
-  const [creditCards, setCreditCards] = useState<CreditCard[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_cards');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed.filter((c) => c && !c.id?.includes('nubank')) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
 
-  const [transactions, setTransactions] = useState<FinanceTransaction[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_transactions');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed)
-        ? parsed.filter(
-            (t) =>
-              t &&
-              !t.description?.includes('Salário Mensal (Exemplo)') &&
-              !t.description?.includes('Supermercado (Exemplo)')
-          )
-        : [];
-    } catch {
-      return [];
-    }
-  });
+  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
 
-  const [bills, setBills] = useState<FinanceBill[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_bills');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed)
-        ? parsed.filter((b) => b && !b.title?.includes('Aluguel (Exemplo)'))
-        : [];
-    } catch {
-      return [];
-    }
-  });
+  const [bills, setBills] = useState<FinanceBill[]>([]);
 
-  const [debts, setDebts] = useState<FinanceDebt[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_debts');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
+  const [debts, setDebts] = useState<FinanceDebt[]>([]);
 
-  const [installments, setInstallments] = useState<InstallmentPurchase[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_installments');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
+  const [installments, setInstallments] = useState<InstallmentPurchase[]>([]);
 
-  const [emergencyFund, setEmergencyFund] = useState<EmergencyFund>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_emergency');
-      if (!saved) return INITIAL_EMERGENCY_FUND;
-      const parsed = JSON.parse(saved);
-      if (parsed.currentAmount === 4500 && parsed.targetAmount === 12000) {
-        return INITIAL_EMERGENCY_FUND;
-      }
-      return parsed;
-    } catch {
-      return INITIAL_EMERGENCY_FUND;
-    }
-  });
+  const [emergencyFund, setEmergencyFund] = useState<EmergencyFund>(INITIAL_EMERGENCY_FUND);
 
-  const [goals, setGoals] = useState<FinancialGoalItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_goals');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
+  const [goals, setGoals] = useState<FinancialGoalItem[]>([]);
 
-  const [investments, setInvestments] = useState<InvestmentAssetItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_investments');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
+  const [investments, setInvestments] = useState<InvestmentAssetItem[]>([]);
 
-  const [budget, setBudget] = useState<ZeroBasedBudget>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_budget');
-      if (!saved) return INITIAL_ZERO_BASED_BUDGET;
-      const parsed = JSON.parse(saved);
-      if (parsed.plannedIncome === 5200) {
-        return INITIAL_ZERO_BASED_BUDGET;
-      }
-      return parsed;
-    } catch {
-      return INITIAL_ZERO_BASED_BUDGET;
-    }
-  });
+  const [budget, setBudget] = useState<ZeroBasedBudget>(INITIAL_ZERO_BASED_BUDGET);
 
-  const [monthlyClosingHistory, setMonthlyClosingHistory] = useState<MonthlyClosing[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_closings');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed.filter((c) => c && c.id !== 'closing_2026_08') : [];
-    } catch {
-      return [];
-    }
-  });
+  const [monthlyClosingHistory, setMonthlyClosingHistory] = useState<MonthlyClosing[]>([]);
 
-  const [diagnosis, setDiagnosis] = useState<FinancialDiagnosisData>(() => {
-    try {
-      const saved = localStorage.getItem('cp_fin_diagnosis');
-      if (!saved) return INITIAL_DIAGNOSIS;
-      const parsed = JSON.parse(saved);
-      if (parsed.monthlyIncome === 5200) {
-        return INITIAL_DIAGNOSIS;
-      }
-      return parsed;
-    } catch {
-      return INITIAL_DIAGNOSIS;
-    }
-  });
+  const [diagnosis, setDiagnosis] = useState<FinancialDiagnosisData>(INITIAL_DIAGNOSIS);
 
   // Server Database Connection & Synchronization
   const [isFinanceDbConnected, setIsFinanceDbConnected] = useState<boolean>(true);
@@ -344,35 +199,32 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [lastFinanceDbSyncedAt, setLastFinanceDbSyncedAt] = useState<string | null>(null);
   const [isHydratedFromDb, setIsHydratedFromDb] = useState<boolean>(false);
 
-  // Initial load from server database
+  // Initial load from Supabase for the authenticated user.
   useEffect(() => {
+    if (!authUser) return;
     let isMounted = true;
     async function loadFinanceFromDb() {
       try {
-        const res = await fetch('/api/finance');
-        if (!res.ok) throw new Error('Failed to fetch finance DB');
-        const data = await res.json();
+        const data = await loadFinanceData();
         if (data && isMounted) {
-          if (Array.isArray(data.accounts) && data.accounts.length > 0) setAccounts(data.accounts);
-          if (Array.isArray(data.creditCards) && data.creditCards.length > 0) setCreditCards(data.creditCards);
-          if (Array.isArray(data.transactions) && data.transactions.length > 0) setTransactions(data.transactions);
-          if (Array.isArray(data.bills) && data.bills.length > 0) setBills(data.bills);
-          if (Array.isArray(data.debts) && data.debts.length > 0) setDebts(data.debts);
-          if (Array.isArray(data.installments) && data.installments.length > 0) setInstallments(data.installments);
-          if (data.emergencyFund && (data.emergencyFund.currentAmount > 0 || data.emergencyFund.targetAmount > 0)) {
-            setEmergencyFund(data.emergencyFund);
-          }
-          if (Array.isArray(data.goals) && data.goals.length > 0) setGoals(data.goals);
-          if (Array.isArray(data.investments) && data.investments.length > 0) setInvestments(data.investments);
-          if (data.budget && data.budget.plannedIncome > 0) setBudget(data.budget);
-          if (Array.isArray(data.closings) && data.closings.length > 0) setMonthlyClosingHistory(data.closings);
-          if (data.diagnosis && data.diagnosis.monthlyIncome > 0) setDiagnosis(data.diagnosis);
+          setAccounts(data.accounts as FinanceAccount[]);
+          setCreditCards(data.creditCards as CreditCard[]);
+          setTransactions(data.transactions as FinanceTransaction[]);
+          setBills(data.bills as FinanceBill[]);
+          setDebts(data.debts as FinanceDebt[]);
+          setInstallments(data.installments as InstallmentPurchase[]);
+          if (data.emergencyFund) setEmergencyFund(data.emergencyFund as EmergencyFund);
+          setGoals(data.goals as FinancialGoalItem[]);
+          setInvestments(data.investments as InvestmentAssetItem[]);
+          if (data.budget && Object.keys(data.budget).length) setBudget(data.budget as ZeroBasedBudget);
+          setMonthlyClosingHistory(data.closings as MonthlyClosing[]);
+          if (data.diagnosis && Object.keys(data.diagnosis).length) setDiagnosis(data.diagnosis as FinancialDiagnosisData);
 
           setIsFinanceDbConnected(true);
           setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
         }
       } catch (err) {
-        console.warn('Could not sync finance with server DB, using local store:', err);
+        console.error('Could not load finance data from Supabase:', err);
         setIsFinanceDbConnected(false);
       } finally {
         if (isMounted) setIsHydratedFromDb(true);
@@ -382,56 +234,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => {
       isMounted = false;
     };
-  }, []);
-
-  // Save changes to localStorage for instant offline access
-  useEffect(() => {
-    localStorage.setItem('cp_fin_accounts', JSON.stringify(accounts));
-  }, [accounts]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_fin_cards', JSON.stringify(creditCards));
-  }, [creditCards]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_fin_transactions', JSON.stringify(transactions));
-  }, [transactions]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_fin_bills', JSON.stringify(bills));
-  }, [bills]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_fin_debts', JSON.stringify(debts));
-  }, [debts]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_fin_installments', JSON.stringify(installments));
-  }, [installments]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_fin_emergency', JSON.stringify(emergencyFund));
-  }, [emergencyFund]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_fin_goals', JSON.stringify(goals));
-  }, [goals]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_fin_investments', JSON.stringify(investments));
-  }, [investments]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_fin_budget', JSON.stringify(budget));
-  }, [budget]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_fin_closings', JSON.stringify(monthlyClosingHistory));
-  }, [monthlyClosingHistory]);
-
-  useEffect(() => {
-    localStorage.setItem('cp_fin_diagnosis', JSON.stringify(diagnosis));
-  }, [diagnosis]);
+  }, [authUser]);
 
   // Payload for server database sync
   const financeDbPayload = useMemo(() => ({
@@ -449,25 +252,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     diagnosis,
   }), [accounts, creditCards, transactions, bills, debts, installments, emergencyFund, goals, investments, budget, monthlyClosingHistory, diagnosis]);
 
-  // Auto-sync debounced to server database
+  // Auto-sync debounced to Supabase.
   useEffect(() => {
-    if (!isHydratedFromDb) return;
+    if (!isHydratedFromDb || !authUser) return;
 
     const timer = setTimeout(async () => {
       try {
         setIsFinanceDbSaving(true);
-        const res = await fetch('/api/finance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(financeDbPayload),
-        });
-        if (res.ok) {
-          setIsFinanceDbConnected(true);
-          setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
-        } else {
-          setIsFinanceDbConnected(false);
-        }
-      } catch {
+        await saveFinanceData(authUser.id, financeDbPayload);
+        setIsFinanceDbConnected(true);
+        setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
+      } catch (error) {
+        console.error('Could not save finance data to Supabase:', error);
         setIsFinanceDbConnected(false);
       } finally {
         setIsFinanceDbSaving(false);
@@ -475,30 +271,23 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [financeDbPayload, isHydratedFromDb]);
+  }, [authUser, financeDbPayload, isHydratedFromDb]);
 
   const forceFinanceDbSync = useCallback(async (): Promise<boolean> => {
+    if (!authUser) return false;
     setIsFinanceDbSaving(true);
     try {
-      const res = await fetch('/api/finance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(financeDbPayload),
-      });
-      if (res.ok) {
-        setIsFinanceDbConnected(true);
-        setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
-        return true;
-      }
-      setIsFinanceDbConnected(false);
-      return false;
+      await saveFinanceData(authUser.id, financeDbPayload);
+      setIsFinanceDbConnected(true);
+      setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
+      return true;
     } catch {
       setIsFinanceDbConnected(false);
       return false;
     } finally {
       setIsFinanceDbSaving(false);
     }
-  }, [financeDbPayload]);
+  }, [authUser, financeDbPayload]);
 
   // Modals
   const openTransactionModal = useCallback((type: TransactionType = 'expense') => {
@@ -654,7 +443,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addTransaction = useCallback(
     (txData: Omit<FinanceTransaction, 'id'>): FinanceTransaction => {
-      const newId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const newId = crypto.randomUUID();
       const newTx: FinanceTransaction = { ...txData, id: newId };
 
       setTransactions((prev) => [newTx, ...prev]);
@@ -725,7 +514,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteTransaction = useCallback((id: string) => {
     setTransactions((prev) => prev.filter((t) => t.id !== id));
-    fetch(`/api/finance/transactions/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   const quickAddTransaction = useCallback(
@@ -749,7 +537,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Accounts
   const addAccount = useCallback((accData: Omit<FinanceAccount, 'id'>) => {
-    const newId = `acc_${Date.now()}`;
+    const newId = crypto.randomUUID();
     setAccounts((prev) => [...prev, { ...accData, id: newId }]);
   }, []);
 
@@ -759,12 +547,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteAccount = useCallback((id: string) => {
     setAccounts((prev) => prev.filter((a) => a.id !== id));
-    fetch(`/api/finance/accounts/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   // Credit Cards
   const addCreditCard = useCallback((cardData: Omit<CreditCard, 'id'>) => {
-    const newId = `card_${Date.now()}`;
+    const newId = crypto.randomUUID();
     setCreditCards((prev) => [...prev, { ...cardData, id: newId }]);
   }, []);
 
@@ -774,12 +561,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteCreditCard = useCallback((id: string) => {
     setCreditCards((prev) => prev.filter((c) => c.id !== id));
-    fetch(`/api/finance/cards/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   // Bills (Contas a pagar)
   const addBill = useCallback((billData: Omit<FinanceBill, 'id'>) => {
-    const newId = `bill_${Date.now()}`;
+    const newId = crypto.randomUUID();
     setBills((prev) => [...prev, { ...billData, id: newId }]);
   }, []);
 
@@ -789,7 +575,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteBill = useCallback((id: string) => {
     setBills((prev) => prev.filter((b) => b.id !== id));
-    fetch(`/api/finance/bills/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   const payBill = useCallback(
@@ -845,7 +630,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Debts
   const addDebt = useCallback((debtData: Omit<FinanceDebt, 'id'>) => {
-    const newId = `debt_${Date.now()}`;
+    const newId = crypto.randomUUID();
     setDebts((prev) => [...prev, { ...debtData, id: newId }]);
   }, []);
 
@@ -855,7 +640,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteDebt = useCallback((id: string) => {
     setDebts((prev) => prev.filter((d) => d.id !== id));
-    fetch(`/api/finance/debts/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   const payDebtInstallment = useCallback(
@@ -910,7 +694,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         );
         if (idx !== -1) {
           const removed = prev[idx];
-          fetch(`/api/finance/transactions/${removed.id}`, { method: 'DELETE' }).catch(console.warn);
           return prev.filter((_, i) => i !== idx);
         }
         return prev;
@@ -974,7 +757,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Financial Goals
   const addFinancialGoal = useCallback((goalData: Omit<FinancialGoalItem, 'id'>) => {
-    const newId = `fgoal_${Date.now()}`;
+    const newId = crypto.randomUUID();
     setGoals((prev) => [...prev, { ...goalData, id: newId }]);
   }, []);
 
@@ -984,7 +767,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteFinancialGoal = useCallback((id: string) => {
     setGoals((prev) => prev.filter((g) => g.id !== id));
-    fetch(`/api/finance/goals/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   const contributeToGoal = useCallback(
@@ -1005,7 +787,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         subcategory: goal.title,
         accountId,
         goalId,
-        tags: ['meta', 'poupança'],
+        tags: ['meta'],
       });
     },
     [goals, updateFinancialGoal, addTransaction]
@@ -1033,7 +815,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Investments & Assets
   const addInvestmentAsset = useCallback((assetData: Omit<InvestmentAssetItem, 'id'>) => {
-    const newId = `inv_${Date.now()}`;
+    const newId = crypto.randomUUID();
     setInvestments((prev) => [...prev, { ...assetData, id: newId }]);
   }, []);
 
@@ -1043,7 +825,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteInvestmentAsset = useCallback((id: string) => {
     setInvestments((prev) => prev.filter((i) => i.id !== id));
-    fetch(`/api/finance/investments/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   const recordAporte = useCallback(
@@ -1111,7 +892,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       addNotification({
         title: 'Fechamento do Mês Realizado!',
-        message: `Fechamento financeiro de ${currentMonthStr} salvo com sucesso. Taxa de poupança: ${savingsRate.toFixed(1)}%.`,
+        message: `Fechamento financeiro de ${currentMonthStr} salvo com sucesso. Taxa de alocação para metas e investimentos: ${savingsRate.toFixed(1)}%.`,
         type: 'system',
       });
     },

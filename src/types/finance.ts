@@ -17,7 +17,7 @@ export type TransactionType =
 export type FinanceAccountType =
   | 'checking'
   | 'digital'
-  | 'savings'
+  | 'emergency_reserve'
   | 'wallet'
   | 'brokerage'
   | 'international';

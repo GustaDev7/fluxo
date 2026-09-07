@@ -544,7 +544,7 @@ app.post('/api/data/reset', requireAuth, async (req: AuthRequest, res) => {
 });
 
 // POST AI Parse Task from raw natural language
-app.post('/api/ai/parse-task', async (req, res) => {
+app.post('/api/ai/parse-task', requireAuth, async (req, res) => {
   try {
     const { prompt, referenceDate } = req.body;
     if (!prompt) {
@@ -589,7 +589,7 @@ Retorne APENAS o JSON válido sem marcações markdown de código adicionais.`;
 });
 
 // POST AI Project Breakdown
-app.post('/api/ai/breakdown-project', async (req, res) => {
+app.post('/api/ai/breakdown-project', requireAuth, async (req, res) => {
   try {
     const { projectName, projectDescription, targetDueDate } = req.body;
     if (!projectName) {
@@ -639,7 +639,7 @@ Retorne estritamente o JSON sem comentários adicionais.`;
 });
 
 // POST AI Suggest Recurring Routines & Operational SOPs for Projects
-app.post('/api/ai/project-routines', async (req, res) => {
+app.post('/api/ai/project-routines', requireAuth, async (req, res) => {
   try {
     const { projectName, projectDescription, recurrenceFrequency } = req.body;
     if (!projectName) {
@@ -687,7 +687,7 @@ Retorne estritamente o JSON sem comentários adicionais.`;
 });
 
 // POST AI Smart Priorities & Daily Executive Briefing
-app.post('/api/ai/smart-priorities', async (req, res) => {
+app.post('/api/ai/smart-priorities', requireAuth, async (req, res) => {
   try {
     const { tasks, currentDate } = req.body;
     const ai = getGeminiClient();
@@ -727,7 +727,7 @@ Retorne estritamente o JSON.`;
 });
 
 // POST Conversational AI Assistant with Voice & Full System Agency
-app.post('/api/ai/assistant-chat', async (req, res) => {
+app.post('/api/ai/assistant-chat', requireAuth, async (req, res) => {
   try {
     const { message, history = [], systemContext = {} } = req.body;
     if (!message || typeof message !== 'string') {

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { FluxoIcon } from './FluxoLogo';
+import { useAuth } from '../context/AuthContext';
 import {
   Search,
   Plus,
@@ -16,9 +17,11 @@ import {
   ExternalLink,
   BookOpen,
   Database,
+  LogOut,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
+  const { signOut } = useAuth();
   const {
     setIsCommandPaletteOpen,
     setIsQuickCaptureOpen,
@@ -323,6 +326,16 @@ export const Header: React.FC = () => {
             </div>
           )}
         </div>
+
+        <button
+          type="button"
+          onClick={() => signOut()}
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-600 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:border-neutral-800 dark:text-neutral-400 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
+          title="Sair do Fluxo"
+          aria-label="Sair do Fluxo"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
       </div>
     </header>
   );

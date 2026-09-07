@@ -217,7 +217,7 @@ export const LifeOverviewModal: React.FC<LifeOverviewModalProps> = ({ isOpen, on
               </div>
               <div className="mt-3 space-y-1">
                 <div className="flex justify-between text-sm">
-                  <span className="text-neutral-600 dark:text-neutral-400">Taxa de poupança:</span>
+                  <span className="text-neutral-600 dark:text-neutral-400">Margem financeira mensal:</span>
                   <span className="font-bold text-emerald-600 dark:text-emerald-400">
                     {overview.finance.savingsRatePercent}%
                   </span>

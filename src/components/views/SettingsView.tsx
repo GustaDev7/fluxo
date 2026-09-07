@@ -35,7 +35,6 @@ export const SettingsView: React.FC = () => {
     isDarkMode,
     setIsDarkMode,
     clearToCleanSlate,
-    resetToSampleData,
     exportBackupJson,
     importBackupJson,
     tasks,
@@ -138,23 +137,11 @@ export const SettingsView: React.FC = () => {
   const handleStartClean = () => {
     if (
       window.confirm(
-        'Deseja limpar todos os dados de exemplo para iniciar seu espaço pessoal do zero? Suas preferências e perfil serão mantidos.'
+        'Deseja apagar seus dados e iniciar o espaço pessoal do zero? Seu perfil será mantido.'
       )
     ) {
       clearToCleanSlate();
       alert('Espaço limpo ativado! Pronto para seu uso diário.');
-    }
-  };
-
-  // Reset to default sample data
-  const handleResetData = () => {
-    if (
-      window.confirm(
-        'Deseja recarregar os dados de exemplo para demonstração? Isso substituirá os dados atuais.'
-      )
-    ) {
-      resetToSampleData();
-      alert('Dados de exemplo restaurados.');
     }
   };
 
@@ -241,7 +228,7 @@ export const SettingsView: React.FC = () => {
           </form>
         </div>
 
-        {/* Clean Slate vs Sample Data Workspace */}
+        {/* Clean workspace */}
         <div className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-6 shadow-sm dark:border-indigo-950 dark:bg-indigo-950/20 space-y-4">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
@@ -250,7 +237,7 @@ export const SettingsView: React.FC = () => {
                 Prontidão para Uso Diário: Meu Espaço Pessoal
               </h2>
               <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                Alterne entre um espaço de trabalho totalmente limpo para suas tarefas reais ou dados de exemplo.
+                Use apenas seus dados reais, armazenados com segurança no Supabase.
               </p>
             </div>
           </div>
@@ -264,13 +251,6 @@ export const SettingsView: React.FC = () => {
               <span>Iniciar Meu Espaço Limpo (Começar do Zero)</span>
             </button>
 
-            <button
-              onClick={handleResetData}
-              className="flex items-center gap-1.5 rounded-xl border border-neutral-300 bg-white px-3.5 py-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              <span>Recarregar Dados de Exemplo</span>
-            </button>
           </div>
         </div>
 
@@ -502,17 +482,6 @@ export const SettingsView: React.FC = () => {
               <span>Limpar Todos os Dados (Zerar Banco)</span>
             </button>
 
-            <button
-              onClick={() => {
-                if (confirm('Deseja carregar dados de demonstração predefinidos?')) {
-                  resetToSampleData();
-                }
-              }}
-              className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              <span>Carregar Dados de Exemplo</span>
-            </button>
           </div>
         </div>
 

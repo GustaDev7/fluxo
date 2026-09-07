@@ -279,7 +279,7 @@ export const financeAccounts = pgTable(
       .references(() => users.uid, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     bank: text('bank').notNull(),
-    type: text('type').notNull(), // 'checking', 'digital', 'savings', 'wallet', 'brokerage', 'international'
+    type: text('type').notNull(), // 'checking', 'digital', 'emergency_reserve', 'wallet', 'brokerage', 'international'
     balance: numeric('balance', { precision: 12, scale: 2 }).notNull().default('0.00'),
     color: text('color').default('#6366f1'),
     icon: text('icon'),

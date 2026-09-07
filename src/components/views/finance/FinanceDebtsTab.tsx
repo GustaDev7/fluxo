@@ -738,8 +738,8 @@ export const FinanceDebtsTab: React.FC = () => {
                           {formatBRL(interestBreakdown.nominalTotal)}
                         </div>
                         <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                          {interestBreakdown.embeddedInterest > 0
-                            ? `Economia de ${formatBRL(interestBreakdown.embeddedInterest)} em juros se quitar hoje!`
+                          {interestBreakdown.interestSavings > 0
+                            ? `Economia de ${formatBRL(interestBreakdown.interestSavings)} em juros se quitar hoje!`
                             : 'Sem acréscimo de juros futuros'}
                         </div>
                       </div>
@@ -1353,7 +1353,7 @@ export const FinanceDebtsTab: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-neutral-400 block">Juros Embutidos Futuros</span>
-                  <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">{formatBRL(amortInterest.embeddedInterest)}</span>
+                  <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">{formatBRL(amortInterest.interestSavings)}</span>
                 </div>
               </div>
 

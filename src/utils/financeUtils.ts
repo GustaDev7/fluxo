@@ -226,27 +226,27 @@ export function calculateFinancialHealthScore(params: {
   let score = 50; // baseline
   const factors: FinancialHealthScore['factors'] = [];
 
-  // 1. Savings Rate (20 pts)
+  // 1. Allocation rate (20 pts)
   if (params.savingsRate >= 20) {
     score += 15;
     factors.push({
-      label: 'Taxa de Poupança Elevada',
+      label: 'Boa Alocação Financeira',
       status: 'positive',
       detail: `Você destina ${formatPercent(params.savingsRate)} para metas e investimentos (excelente, acima de 20%).`,
     });
   } else if (params.savingsRate >= 10) {
     score += 8;
     factors.push({
-      label: 'Taxa de Poupança Moderada',
+      label: 'Alocação Financeira Moderada',
       status: 'neutral',
-      detail: `Você poupa ${formatPercent(params.savingsRate)}. O ideal é buscar gradualmente 20% da renda.`,
+      detail: `Você destina ${formatPercent(params.savingsRate)} para metas e investimentos. O ideal é buscar gradualmente 20% da renda.`,
     });
   } else {
     score -= 10;
     factors.push({
-      label: 'Taxa de Poupança Baixa',
+      label: 'Alocação Financeira Baixa',
       status: 'negative',
-      detail: `Poupança atual em ${formatPercent(params.savingsRate)}. Busque cortar custos não essenciais.`,
+      detail: `A alocação atual está em ${formatPercent(params.savingsRate)}. Busque reduzir custos não essenciais e priorizar suas metas.`,
     });
   }
 
@@ -948,4 +948,3 @@ export function getDebtDueDateStatus(dueDay: number): DebtDueDateStatus {
     badgeStyle,
   };
 }
-

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { authenticatedFetch } from '../../lib/api';
 import {
   FolderKanban,
   Plus,
@@ -186,7 +187,7 @@ export const ProjectsView: React.FC = () => {
     if (!currentProject) return;
     setIsAiRoutinesLoading(true);
     try {
-      const res = await fetch('/api/ai/project-routines', {
+      const res = await authenticatedFetch('/api/ai/project-routines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

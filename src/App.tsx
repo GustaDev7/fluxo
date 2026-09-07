@@ -27,6 +27,8 @@ import { FinanceView } from './components/views/FinanceView';
 import { AIAssistantWidget } from './components/AIAssistantWidget';
 import { FinanceProvider } from './context/FinanceContext';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthScreen } from './components/AuthScreen';
 
 const AppContent: React.FC = () => {
   const {
@@ -191,6 +193,26 @@ const AppContent: React.FC = () => {
 };
 
 export default function App() {
+  return (
+    <AuthProvider>
+      <AuthenticatedApp />
+    </AuthProvider>
+  );
+}
+
+function AuthenticatedApp() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-neutral-950 text-sm font-semibold text-neutral-400">
+        Preparando seu Fluxo...
+      </div>
+    );
+  }
+
+  if (!user) return <AuthScreen />;
+
   return (
     <AppProvider>
       <FinanceProvider>

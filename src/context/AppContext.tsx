@@ -26,26 +26,13 @@ import { EnrichedProjectRoutine, getAllEnrichedProjectRoutines } from '../utils/
 import {
   DEFAULT_USER,
   DEFAULT_COLUMNS,
-  DEFAULT_PROJECTS,
-  DEFAULT_TASKS,
-  DEFAULT_EVENTS,
-  DEFAULT_GOALS,
-  DEFAULT_HABITS,
-  DEFAULT_NOTES,
   DEFAULT_MONTHLY_PLAN,
-  DEFAULT_NOTIFICATIONS,
-  SAMPLE_USER,
-  SAMPLE_PROJECTS,
-  SAMPLE_TASKS,
-  SAMPLE_EVENTS,
-  SAMPLE_GOALS,
-  SAMPLE_HABITS,
-  SAMPLE_NOTES,
-  SAMPLE_MONTHLY_PLAN,
-  SAMPLE_NOTIFICATIONS,
 } from '../data/initialData';
 import { getTodayDateString, formatDateToYYYYMMDD, calculateNextRecurrenceDate, getTomorrowDateString } from '../utils/date';
 import { parseQuickTask } from '../utils/smartParser';
+import { useAuth } from './AuthContext';
+import { loadProductivityData, saveProductivityData } from '../lib/supabaseStore';
+import { authenticatedFetch } from '../lib/api';
 
 interface ActiveTimer {
   taskId?: string;
@@ -215,25 +202,8 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Aggressive one-time purge for any previous sample data (Alexandre Mendes, task_1, etc.)
-if (typeof window !== 'undefined') {
-  const isPurged = localStorage.getItem('cp_db_clean_purged_v7');
-  if (!isPurged) {
-    localStorage.removeItem('cp_user');
-    localStorage.removeItem('cp_tasks');
-    localStorage.removeItem('cp_projects');
-    localStorage.removeItem('cp_events');
-    localStorage.removeItem('cp_goals');
-    localStorage.removeItem('cp_habits');
-    localStorage.removeItem('cp_notes');
-    localStorage.removeItem('cp_monthly');
-    localStorage.removeItem('cp_notifications');
-    localStorage.removeItem('cp_time_entries');
-    localStorage.setItem('cp_db_clean_purged_v7', 'true');
-  }
-}
-
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user: authUser } = useAuth();
   // Database status
   const [isDbConnected, setIsDbConnected] = useState(true);
   const [isDbSaving, setIsDbSaving] = useState(false);
@@ -288,121 +258,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   // Entities state with strict sanitization (no sample data)
-  const [user, setUser] = useState<UserProfile>(() => {
-    try {
-      const saved = localStorage.getItem('cp_user');
-      if (!saved) return DEFAULT_USER;
-      const parsed = JSON.parse(saved);
-      if (parsed.name === 'Alexandre Mendes' || parsed.email?.includes('empresa.com')) {
-        return DEFAULT_USER;
-      }
-      return parsed;
-    } catch {
-      return DEFAULT_USER;
-    }
-  });
+  const [user, setUser] = useState<UserProfile>(() => ({
+    ...DEFAULT_USER,
+    id: authUser?.id || DEFAULT_USER.id,
+    email: authUser?.email || '',
+    name: authUser?.user_metadata?.full_name || DEFAULT_USER.name,
+    theme: (localStorage.getItem('fluxo_theme') as UserProfile['theme']) || DEFAULT_USER.theme,
+  }));
 
   const [columns] = useState<KanbanColumn[]>(DEFAULT_COLUMNS);
 
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_tasks');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter(
-        (t) => t && t.id !== 'task_1' && !t.title?.includes('Cliente Beta') && !t.title?.includes('Design System')
-      );
-    } catch {
-      return [];
-    }
-  });
-
-  const [projects, setProjects] = useState<Project[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_projects');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter((p) => p && p.id !== 'proj_1' && !p.name?.includes('Redesign'));
-    } catch {
-      return [];
-    }
-  });
-
-  const [events, setEvents] = useState<CalendarEvent[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_events');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter(
-        (e) => e && e.id !== 'evt_1' && !e.title?.includes('Daily do Time') && !e.title?.includes('Bloco de Foco')
-      );
-    } catch {
-      return [];
-    }
-  });
-
-  const [goals, setGoals] = useState<Goal[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_goals');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed.filter((g) => g && g.id !== 'goal_1') : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [habits, setHabits] = useState<Habit[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_habits');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed.filter((h) => h && h.id !== 'habit_1') : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [notes, setNotes] = useState<NotePage[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_notes');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed.filter((n) => n && n.id !== 'note_1') : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [monthlyPlan, setMonthlyPlan] = useState<MonthlyPlan>(() => {
-    try {
-      const saved = localStorage.getItem('cp_monthly');
-      return saved ? JSON.parse(saved) : DEFAULT_MONTHLY_PLAN;
-    } catch {
-      return DEFAULT_MONTHLY_PLAN;
-    }
-  });
-
-  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_notifications');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(() => {
-    try {
-      const saved = localStorage.getItem('cp_time_entries');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [notes, setNotes] = useState<NotePage[]>([]);
+  const [monthlyPlan, setMonthlyPlan] = useState<MonthlyPlan>(DEFAULT_MONTHLY_PLAN);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
 
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
 
@@ -411,15 +285,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // AI Conversational Assistant & Voice state
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<AIChatMessage[]>(() => {
-    try {
-      const saved = localStorage.getItem('fluxo_ai_chat_history');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return [
+  const [chatMessages, setChatMessages] = useState<AIChatMessage[]>([
       {
         id: 'msg_welcome',
         sender: 'assistant',
@@ -432,14 +298,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           'Crie um projeto chamado Lançamento Beta',
         ],
       },
-    ];
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('fluxo_ai_chat_history', JSON.stringify(chatMessages.slice(-50)));
-    } catch {}
-  }, [chatMessages]);
+    ]);
 
   const isDarkMode =
     user.theme === 'dark' ||
@@ -450,7 +309,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setIsDarkMode = useCallback((dark: boolean) => {
     setUser((prev) => {
       const updated = { ...prev, theme: dark ? ('dark' as const) : ('light' as const) };
-      localStorage.setItem('cp_user', JSON.stringify(updated));
+      localStorage.setItem('fluxo_theme', updated.theme);
       return updated;
     });
   }, []);
@@ -472,109 +331,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [user.theme]);
 
-  // Load from backend storage on mount if available (with mock data filter)
+  // Load the authenticated user's data from Supabase.
   useEffect(() => {
-    fetch('/api/data')
-      .then((res) => (res.ok ? res.json() : null))
+    if (!authUser) return;
+    loadProductivityData()
       .then((data) => {
-        if (data) {
-          if (data.user && data.user.name !== 'Alexandre Mendes') setUser(data.user);
-          if (Array.isArray(data.tasks)) {
-            const clean = data.tasks.filter(
-              (t: any) => t && t.id !== 'task_1' && !t.title?.includes('Cliente Beta')
-            );
-            setTasks(clean);
-          }
-          if (Array.isArray(data.projects)) {
-            const clean = data.projects.filter(
-              (p: any) => p && p.id !== 'proj_1' && !p.name?.includes('Redesign')
-            );
-            setProjects(clean);
-          }
-          if (Array.isArray(data.events)) {
-            const clean = data.events.filter(
-              (e: any) => e && e.id !== 'evt_1' && !e.title?.includes('Daily do Time')
-            );
-            setEvents(clean);
-          }
-          if (Array.isArray(data.goals)) {
-            setGoals(data.goals.filter((g: any) => g && g.id !== 'goal_1'));
-          }
-          if (Array.isArray(data.habits)) {
-            setHabits(data.habits.filter((h: any) => h && h.id !== 'habit_1'));
-          }
-          if (Array.isArray(data.notes)) {
-            setNotes(data.notes.filter((n: any) => n && n.id !== 'note_1'));
-          }
-          if (data.monthlyPlan) setMonthlyPlan(data.monthlyPlan);
-          if (Array.isArray(data.notifications)) setNotifications(data.notifications);
-          if (Array.isArray(data.timeEntries)) setTimeEntries(data.timeEntries);
-          setIsDbConnected(true);
-          setLastDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
-        }
+        setUser((current) => ({
+          ...current,
+          ...(data.user || {}),
+          id: authUser.id,
+          email: authUser.email || '',
+          name: data.user?.name || authUser.user_metadata?.full_name || current.name,
+        }));
+        setTasks(data.tasks as Task[]);
+        setProjects(data.projects as Project[]);
+        setEvents(data.events as CalendarEvent[]);
+        setGoals(data.goals as Goal[]);
+        setHabits(data.habits as Habit[]);
+        setNotes(data.notes as NotePage[]);
+        if (data.monthlyPlan) setMonthlyPlan(data.monthlyPlan as MonthlyPlan);
+        setNotifications(data.notifications as AppNotification[]);
+        setTimeEntries(data.timeEntries as TimeEntry[]);
+        if (data.chatMessages.length) setChatMessages(data.chatMessages as AIChatMessage[]);
+        setIsDbConnected(true);
+        setLastDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
       })
       .catch((err) => {
-        console.warn('Backend store load failed, using local storage fallback:', err);
+        console.error('Supabase data load failed:', err);
         setIsDbConnected(false);
       })
       .finally(() => {
         setIsHydratedFromDb(true);
       });
-  }, []);
+  }, [authUser]);
 
-  // Save to local storage and sync with server database whenever state changes
+  // Persist authenticated data in Supabase. Browser storage is not a data source.
   useEffect(() => {
-    localStorage.setItem('cp_user', JSON.stringify(user));
-    localStorage.setItem('cp_tasks', JSON.stringify(tasks));
-    localStorage.setItem('cp_projects', JSON.stringify(projects));
-    localStorage.setItem('cp_events', JSON.stringify(events));
-    localStorage.setItem('cp_goals', JSON.stringify(goals));
-    localStorage.setItem('cp_habits', JSON.stringify(habits));
-    localStorage.setItem('cp_notes', JSON.stringify(notes));
-    localStorage.setItem('cp_monthly', JSON.stringify(monthlyPlan));
-    localStorage.setItem('cp_notifications', JSON.stringify(notifications));
-    localStorage.setItem('cp_time_entries', JSON.stringify(timeEntries));
-
-    if (!isHydratedFromDb) return;
+    if (!isHydratedFromDb || !authUser) return;
 
     setIsDbSaving(true);
-    // Debounced sync to server (400ms for fast, reactive persistence)
     const timer = setTimeout(() => {
-      fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user,
-          tasks,
-          projects,
-          events,
-          goals,
-          habits,
-          notes,
-          monthlyPlan,
-          notifications,
-          timeEntries,
-        }),
-      })
-        .then((res) => {
-          if (res.ok) {
-            setIsDbConnected(true);
-            setLastDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
-          } else {
-            setIsDbConnected(false);
-          }
+      saveProductivityData(authUser.id, { user, tasks, projects, events, goals, habits, notes, monthlyPlan, notifications, timeEntries, chatMessages: chatMessages.slice(-50) })
+        .then(() => {
+          setIsDbConnected(true);
+          setLastDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
         })
         .catch((e) => {
-          console.warn('Sync to backend failed:', e);
+          console.error('Supabase data save failed:', e);
           setIsDbConnected(false);
         })
         .finally(() => {
           setIsDbSaving(false);
         });
-    }, 400);
+    }, 700);
 
     return () => clearTimeout(timer);
-  }, [user, tasks, projects, events, goals, habits, notes, monthlyPlan, notifications, timeEntries]);
+  }, [authUser, isHydratedFromDb, user, tasks, projects, events, goals, habits, notes, monthlyPlan, notifications, timeEntries, chatMessages]);
 
   // Pomodoro countdown timer tick
   useEffect(() => {
@@ -589,7 +401,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const minutesElapsed = Math.round(prev.totalSeconds / 60);
             // Log time entry
             const newEntry: TimeEntry = {
-              id: `time_${Date.now()}`,
+              id: crypto.randomUUID(),
               taskId: prev.taskId,
               projectId: prev.projectId,
               taskTitle: prev.taskTitle,
@@ -672,7 +484,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addTask = useCallback((taskData: Partial<Task>): Task => {
     const newTask: Task = {
-      id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      id: crypto.randomUUID(),
       title: taskData.title || 'Nova Tarefa',
       description: taskData.description || '',
       status: taskData.status || 'todo',
@@ -861,7 +673,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addProject = useCallback((projData: Partial<Project>): Project => {
     const newProj: Project = {
-      id: `proj_${Date.now()}`,
+      id: crypto.randomUUID(),
       name: projData.name || 'Novo Projeto',
       description: projData.description || '',
       color: projData.color || '#3b82f6',
@@ -889,7 +701,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteProject = useCallback((id: string) => {
     setProjects((prev) => prev.filter((p) => p.id !== id));
-    fetch(`/api/projects/${id}`, { method: 'DELETE' }).catch(console.warn);
     if (selectedProjectId === id) setSelectedProjectId(null);
   }, [selectedProjectId]);
 
@@ -1033,7 +844,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addEvent = useCallback((eventData: Partial<CalendarEvent>): CalendarEvent => {
     const newEvt: CalendarEvent = {
-      id: `evt_${Date.now()}`,
+      id: crypto.randomUUID(),
       title: eventData.title || 'Novo Evento',
       description: eventData.description || '',
       startDate: eventData.startDate || getTodayDateString(),
@@ -1059,14 +870,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteEvent = useCallback((id: string) => {
     setEvents((prev) => prev.filter((e) => e.id !== id));
-    fetch(`/api/events/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   // ================= GOAL ACTIONS =================
 
   const addGoal = useCallback((goalData: Partial<Goal>): Goal => {
     const newGoal: Goal = {
-      id: `goal_${Date.now()}`,
+      id: crypto.randomUUID(),
       title: goalData.title || 'Nova Meta',
       description: goalData.description || '',
       period: goalData.period || 'monthly',
@@ -1099,7 +909,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteGoal = useCallback((id: string) => {
     setGoals((prev) => prev.filter((g) => g.id !== id));
-    fetch(`/api/goals/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   const incrementGoalProgress = useCallback((id: string, delta: number) => {
@@ -1160,7 +969,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addHabit = useCallback((habitData: Partial<Habit>): Habit => {
     const newHabit: Habit = {
-      id: `hab_${Date.now()}`,
+      id: crypto.randomUUID(),
       name: habitData.name || 'Novo Hábito',
       category: habitData.category || 'Saúde',
       icon: habitData.icon || 'Sparkles',
@@ -1178,14 +987,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteHabit = useCallback((id: string) => {
     setHabits((prev) => prev.filter((h) => h.id !== id));
-    fetch(`/api/habits/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   // ================= NOTE ACTIONS =================
 
   const addNote = useCallback((noteData: Partial<NotePage>): NotePage => {
     const newNote: NotePage = {
-      id: `note_${Date.now()}`,
+      id: crypto.randomUUID(),
       title: noteData.title || 'Sem título',
       icon: noteData.icon || '',
       projectId: noteData.projectId,
@@ -1211,7 +1019,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteNote = useCallback((id: string) => {
     setNotes((prev) => prev.filter((n) => n.id !== id));
-    fetch(`/api/notes/${id}`, { method: 'DELETE' }).catch(console.warn);
   }, []);
 
   const addNoteBlock = useCallback((noteId: string, type: NoteBlock['type'] = 'p') => {
@@ -1418,52 +1225,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const forceDbSync = useCallback(async (): Promise<boolean> => {
+    if (!authUser) return false;
     setIsDbSaving(true);
     try {
-      const res = await fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user,
-          tasks,
-          projects,
-          events,
-          goals,
-          habits,
-          notes,
-          monthlyPlan,
-          notifications,
-          timeEntries,
-        }),
-      });
-      if (res.ok) {
-        setIsDbConnected(true);
-        setLastDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
-        return true;
-      }
-      setIsDbConnected(false);
-      return false;
+      await saveProductivityData(authUser.id, { user, tasks, projects, events, goals, habits, notes, monthlyPlan, notifications, timeEntries, chatMessages: chatMessages.slice(-50) });
+      setIsDbConnected(true);
+      setLastDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
+      return true;
     } catch {
       setIsDbConnected(false);
       return false;
     } finally {
       setIsDbSaving(false);
     }
-  }, [user, tasks, projects, events, goals, habits, notes, monthlyPlan, notifications, timeEntries]);
+  }, [authUser, user, tasks, projects, events, goals, habits, notes, monthlyPlan, notifications, timeEntries, chatMessages]);
 
   const resetToSampleData = useCallback(() => {
-    setUser(SAMPLE_USER);
-    setTasks(SAMPLE_TASKS);
-    setProjects(SAMPLE_PROJECTS);
-    setEvents(SAMPLE_EVENTS);
-    setGoals(SAMPLE_GOALS);
-    setHabits(SAMPLE_HABITS);
-    setNotes(SAMPLE_NOTES);
-    setMonthlyPlan(SAMPLE_MONTHLY_PLAN);
-    setNotifications(SAMPLE_NOTIFICATIONS);
-    setTimeEntries([]);
-    fetch('/api/data/reset', { method: 'POST' }).catch(() => {});
-  }, []);
+    showToast('Dados de demonstração foram desativados. O Fluxo utiliza apenas dados reais.', { type: 'info' });
+  }, [showToast]);
 
   const clearToCleanSlate = useCallback(() => {
     setTasks([]);
@@ -1490,7 +1269,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     ]);
     setTimeEntries([]);
-    fetch('/api/data/reset', { method: 'POST' }).catch(() => {});
   }, []);
 
   // ================= AI ASSISTANT ACTIONS =================
@@ -1499,7 +1277,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     async (rawText: string): Promise<Task> => {
       setIsAiLoading(true);
       try {
-        const res = await fetch('/api/ai/parse-task', {
+        const res = await authenticatedFetch('/api/ai/parse-task', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: rawText, referenceDate: getTodayDateString() }),
@@ -1546,7 +1324,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setIsAiLoading(true);
       try {
-        const res = await fetch('/api/ai/breakdown-project', {
+        const res = await authenticatedFetch('/api/ai/breakdown-project', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1593,7 +1371,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const aiGetSmartPriorities = useCallback(async () => {
     setIsAiLoading(true);
     try {
-      const res = await fetch('/api/ai/smart-priorities', {
+      const res = await authenticatedFetch('/api/ai/smart-priorities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tasks, currentDate: getTodayDateString() }),
@@ -1766,7 +1544,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           },
         };
 
-        const res = await fetch('/api/ai/assistant-chat', {
+        const res = await authenticatedFetch('/api/ai/assistant-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -1829,7 +1607,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setChatMessages([welcomeMsg]);
     try {
-      localStorage.setItem('fluxo_ai_chat_history', JSON.stringify([welcomeMsg]));
     } catch {}
   }, []);
 

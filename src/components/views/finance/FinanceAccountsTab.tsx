@@ -163,7 +163,7 @@ export const FinanceAccountsTab: React.FC = () => {
                 >
                   <option value="checking">Conta Corrente</option>
                   <option value="digital">Conta Digital / Giro</option>
-                  <option value="savings">Poupança</option>
+                  <option value="emergency_reserve">Reserva de Emergência</option>
                   <option value="brokerage">Corretora / Investimentos</option>
                   <option value="wallet">Carteira Física</option>
                 </select>
@@ -222,6 +222,8 @@ export const FinanceAccountsTab: React.FC = () => {
                       <div className="text-[10px] text-neutral-400 uppercase tracking-wider">
                         {acc.type === 'checking'
                           ? 'Conta Corrente'
+                          : acc.type === 'emergency_reserve'
+                          ? 'Reserva de Emergência'
                           : acc.type === 'brokerage'
                           ? 'Corretora'
                           : acc.type === 'wallet'

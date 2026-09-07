@@ -544,7 +544,7 @@ export function generateLifeHealthOverview(
   if (score < 60) title = 'Atenção necessária em pontos de pressão hoje.';
   else if (score < 80) title = 'Bom ritmo com oportunidades claras de otimização.';
 
-  const summary = `Você tem ${pendingTasks.length} tarefas pendentes e ${todayEvents.length} compromissos agendados para hoje. Suas finanças mantêm taxa de poupança estimada em ${savingsRate}%, com a meta principal (${primaryGoal?.title || 'Metas'}) em ${primaryGoalProgress}% de avanço.`;
+  const summary = `Você tem ${pendingTasks.length} tarefas pendentes e ${todayEvents.length} compromissos agendados para hoje. Sua margem financeira mensal estimada é de ${savingsRate}%, com a meta principal (${primaryGoal?.title || 'Metas'}) em ${primaryGoalProgress}% de avanço.`;
 
   return {
     score,
