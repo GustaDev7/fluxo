@@ -19,7 +19,7 @@ import {
 } from '../types/finance';
 import { generateSchedule } from '../domain/debtEngine';
 import { calculateBudget } from '../domain/budgetEngine';
-import { getTransactionImpact, isPositiveMoney, money } from '../domain/financeLedger';
+import { calculateInvestmentContribution, getTransactionImpact, isPositiveMoney, money } from '../domain/financeLedger';
 import {
   INITIAL_ACCOUNTS,
   INITIAL_CREDIT_CARDS,
@@ -143,7 +143,7 @@ interface FinanceContextType {
   addInvestmentAsset: (asset: Omit<InvestmentAssetItem, 'id'>) => void;
   updateInvestmentAsset: (id: string, updates: Partial<InvestmentAssetItem>) => void;
   deleteInvestmentAsset: (id: string) => void;
-  recordAporte: (assetId: string, amount: number, accountId: string, quantity?: number) => void;
+  recordAporte: (assetId: string, amount: number, accountId: string, quantity?: number) => boolean;
 
   updateZeroBasedBudget: (allocations: Partial<ZeroBasedBudget['allocations']>, plannedIncome?: number) => void;
   updateBudgetPlan: (budget: ZeroBasedBudget) => void;
@@ -502,9 +502,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setTransactions((prev) => [newTx, ...prev]);
       applyTransactionImpact(newTx, 1);
 
+      const transactionLabels: Record<TransactionType, string> = {
+        income: 'Receita',
+        expense: 'Despesa',
+        transfer: 'Transferência',
+        investment: 'Aporte',
+        redemption: 'Resgate',
+        debt_payment: 'Pagamento de dívida',
+      };
+
       addNotification({
         title: 'Transação Registrada',
-        message: `${newTx.type === 'income' ? 'Receita' : 'Despesa'} de R$ ${newTx.amount.toFixed(2)} cadastrada com sucesso.`,
+        message: `Valor de R$ ${newTx.amount.toFixed(2)} registrado como ${transactionLabels[newTx.type].toLowerCase()}.`,
         type: 'system',
       });
 
@@ -881,21 +890,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const recordAporte = useCallback(
     (assetId: string, amount: number, accountId: string, quantity?: number) => {
       const asset = investments.find((i) => i.id === assetId);
-      if (!asset || !accounts.some((account) => account.id === accountId) || !isPositiveMoney(amount)) return;
+      if (!asset || !accounts.some((account) => account.id === accountId) || !isPositiveMoney(amount)) return false;
 
-      const unitPrice = asset.currentPrice > 0 ? asset.currentPrice : asset.averagePrice;
-      const acquiredQuantity = quantity && quantity > 0 ? quantity : unitPrice > 0 ? amount / unitPrice : 0;
-      const newInvested = money(asset.totalInvested + amount);
-      const newQty = asset.quantity + acquiredQuantity;
-      const averagePrice = newQty > 0 ? newInvested / newQty : 0;
-      const currentValue = unitPrice > 0 ? newQty * unitPrice : newInvested;
-
-      updateInvestmentAsset(assetId, {
-        totalInvested: newInvested,
-        quantity: newQty,
-        averagePrice,
-        currentValue: money(currentValue),
+      const position = calculateInvestmentContribution({
+        quantity: asset.quantity,
+        totalInvested: asset.totalInvested,
+        averagePrice: asset.averagePrice,
+        currentPrice: asset.currentPrice,
+        amount,
+        acquiredQuantity: quantity,
       });
+
+      updateInvestmentAsset(assetId, position);
 
       addTransaction({
         type: 'investment',
@@ -907,8 +913,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         accountId,
         tags: ['investimento', 'aporte'],
       });
+      return true;
     },
-    [investments, updateInvestmentAsset, addTransaction]
+    [investments, accounts, updateInvestmentAsset, addTransaction]
   );
 
   // Zero-Based Budget

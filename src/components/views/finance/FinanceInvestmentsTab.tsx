@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFinance } from '../../../context/FinanceContext';
 import { formatBRL, formatPercent } from '../../../utils/financeUtils';
 import { InvestmentCategory, InvestmentAssetItem } from '../../../types/finance';
@@ -7,19 +7,21 @@ import {
   PieChart,
   Plus,
   Sparkles,
-  ArrowUpRight,
   ShieldCheck,
-  Building2,
-  Globe,
   Coins,
   X,
-  Check,
   BarChart3,
   BriefcaseBusiness,
   Pencil,
   Search,
   Trash2,
+  ChevronDown,
+  MoreHorizontal,
+  ReceiptText,
+  WalletCards,
 } from 'lucide-react';
+
+type AssetFormMode = 'patrimony' | 'investment';
 
 export const FinanceInvestmentsTab: React.FC = () => {
   const {
@@ -32,58 +34,98 @@ export const FinanceInvestmentsTab: React.FC = () => {
     updateInvestmentAsset,
     deleteInvestmentAsset,
     recordAporte,
+    setSubTab,
   } = useFinance();
 
-  const [isAddAssetOpen, setIsAddAssetOpen] = useState(false);
+  const [assetFormMode, setAssetFormMode] = useState<AssetFormMode | null>(null);
   const [ticker, setTicker] = useState('');
   const [category, setCategory] = useState<InvestmentCategory>('renda_fixa');
   const [quantity, setQuantity] = useState('1');
   const [avgPrice, setAvgPrice] = useState('');
-  const [institution, setInstitution] = useState('NuInvest');
+  const [institution, setInstitution] = useState('');
   const [targetAlloc, setTargetAlloc] = useState('15');
   const [search, setSearch] = useState('');
   const [editingAsset, setEditingAsset] = useState<InvestmentAssetItem | null>(null);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Aporte modal
-  const [aporteAssetId, setAporteAssetId] = useState<string | null>(null);
+  const [isAporteOpen, setIsAporteOpen] = useState(false);
+  const [aporteAssetId, setAporteAssetId] = useState('');
   const [aporteAmount, setAporteAmount] = useState('300');
+  const [aporteQuantity, setAporteQuantity] = useState('');
   const [selectedAccId, setSelectedAccId] = useState(accounts[0]?.id || '');
+
+  useEffect(() => {
+    if (!accounts.some((account) => account.id === selectedAccId)) {
+      setSelectedAccId(accounts.find((account) => account.isActive)?.id || accounts[0]?.id || '');
+    }
+  }, [accounts, selectedAccId]);
+
+  useEffect(() => {
+    if (!feedback) return;
+    const timeout = window.setTimeout(() => setFeedback(''), 4000);
+    return () => window.clearTimeout(timeout);
+  }, [feedback]);
+
+  const openAssetForm = (mode: AssetFormMode) => {
+    setAssetFormMode(mode);
+    setTicker('');
+    setCategory(mode === 'patrimony' ? 'outros' : 'renda_fixa');
+    setQuantity(mode === 'patrimony' ? '1' : '0');
+    setAvgPrice('');
+    setInstitution('');
+    setTargetAlloc(mode === 'patrimony' ? '0' : '15');
+  };
+
+  const openAporteForm = (assetId?: string) => {
+    setAporteAssetId(assetId || investments[0]?.id || '');
+    setSelectedAccId((current) => accounts.some((account) => account.id === current)
+      ? current
+      : accounts.find((account) => account.isActive)?.id || accounts[0]?.id || '');
+    setAporteAmount('300');
+    setAporteQuantity('');
+    setIsAporteOpen(true);
+  };
 
   const handleAddAsset = (e: React.FormEvent) => {
     e.preventDefault();
-    const qtyNum = parseFloat(quantity.replace(',', '.')) || 1;
+    const qtyNum = parseFloat(quantity.replace(',', '.')) || 0;
     const priceNum = parseFloat(avgPrice.replace(',', '.')) || 0;
-    const targetNum = parseFloat(targetAlloc.replace(',', '.')) || 10;
+    const targetNum = parseFloat(targetAlloc.replace(',', '.')) || 0;
 
-    if (!ticker || !priceNum) return;
+    if (!ticker.trim()) return;
+    if (assetFormMode === 'patrimony' && (!qtyNum || !priceNum)) return;
 
     const totalVal = qtyNum * priceNum;
 
     addInvestmentAsset({
-      tickerOrName: ticker.toUpperCase(),
+      tickerOrName: ticker.trim().toUpperCase(),
       category,
       quantity: qtyNum,
       averagePrice: priceNum,
       currentPrice: priceNum,
       totalInvested: totalVal,
       currentValue: totalVal,
-      institution,
+      institution: institution.trim() || (assetFormMode === 'patrimony' ? 'Patrimônio pessoal' : 'Não informada'),
       targetAllocationPercent: targetNum,
     });
 
-    setIsAddAssetOpen(false);
-    setTicker('');
-    setAvgPrice('');
+    setAssetFormMode(null);
+    setFeedback(assetFormMode === 'patrimony' ? 'Patrimônio adicionado com sucesso.' : 'Investimento criado com sucesso.');
   };
 
   const handleConfirmAporte = (e: React.FormEvent) => {
     e.preventDefault();
     const amountVal = parseFloat(aporteAmount.replace(',', '.')) || 0;
-    if (!aporteAssetId || !amountVal) return;
+    const quantityVal = parseFloat(aporteQuantity.replace(',', '.')) || undefined;
+    if (!aporteAssetId || !selectedAccId || !amountVal) return;
 
-    recordAporte(aporteAssetId, amountVal, selectedAccId);
-    setAporteAssetId(null);
-    setAporteAmount('');
+    const registered = recordAporte(aporteAssetId, amountVal, selectedAccId, quantityVal);
+    if (!registered) return;
+    setIsAporteOpen(false);
+    setFeedback('Aporte registrado e conta de origem atualizada.');
   };
 
   const totalInvestedPortfolio = investments.reduce((acc, i) => acc + i.currentValue, 0);
@@ -130,8 +172,22 @@ export const FinanceInvestmentsTab: React.FC = () => {
     <div className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div><div className="mb-2 flex items-center gap-2 text-xs font-semibold text-neutral-400"><span>Finanças</span><span>›</span><span className="text-neutral-600 dark:text-neutral-300">Investimentos</span></div><h2 className="text-2xl font-black">Investimentos</h2><p className="mt-1 text-sm text-neutral-500">Acompanhe sua carteira, rentabilidade, alocação e aportes em um só lugar.</p></div>
-        <div className="flex flex-wrap gap-2"><button onClick={() => investments[0] && setAporteAssetId(investments[0].id)} disabled={!investments.length} className="flex items-center gap-2 rounded-xl border border-indigo-500/40 px-4 py-2.5 text-xs font-bold text-indigo-500 disabled:opacity-40"><TrendingUp className="h-4 w-4"/>Registrar aporte</button><button onClick={() => setIsAddAssetOpen(true)} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white"><Plus className="h-4 w-4"/>Novo ativo</button></div>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <button onClick={() => openAssetForm('patrimony')} className="flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-xs font-bold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"><BriefcaseBusiness className="h-4 w-4"/>Adicionar patrimônio</button>
+          <button onClick={() => openAssetForm('investment')} className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3.5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700"><Plus className="h-4 w-4"/>Novo investimento</button>
+          <button onClick={() => openAporteForm()} className="flex items-center justify-center gap-2 rounded-xl border border-indigo-500/40 px-3.5 py-2.5 text-xs font-bold text-indigo-500 hover:bg-indigo-500/5"><TrendingUp className="h-4 w-4"/>Registrar aporte</button>
+          <div className="relative">
+            <button onClick={() => setIsMoreOpen((open) => !open)} aria-expanded={isMoreOpen} className="flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-xs font-bold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"><MoreHorizontal className="h-4 w-4"/><span>Mais</span><ChevronDown className="h-3.5 w-3.5"/></button>
+            {isMoreOpen && <div className="absolute right-0 top-12 z-30 w-56 rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
+              <button onClick={() => { setSubTab('transactions'); setIsMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><ReceiptText className="h-4 w-4"/>Ver movimentações</button>
+              <button onClick={() => { setSubTab('accounts'); setIsMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><WalletCards className="h-4 w-4"/>Gerenciar contas</button>
+              <button onClick={() => { setIsMoreOpen(false); searchInputRef.current?.focus(); searchInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><Search className="h-4 w-4"/>Buscar na carteira</button>
+            </div>}
+          </div>
+        </div>
       </div>
+
+      {feedback && <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">{feedback}</div>}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
@@ -288,7 +344,7 @@ export const FinanceInvestmentsTab: React.FC = () => {
 
           <button
             disabled={!recommendedAsset}
-            onClick={() => recommendedAsset && setAporteAssetId(recommendedAsset.asset.id)}
+            onClick={() => recommendedAsset && openAporteForm(recommendedAsset.asset.id)}
             className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 transition-colors disabled:opacity-40"
           >
             Aportar no Ativo Recomendado
@@ -298,7 +354,7 @@ export const FinanceInvestmentsTab: React.FC = () => {
 
       {/* 4. Assets Table */}
       <div className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">Carteira de ativos ({investments.length})</h4><p className="text-xs text-neutral-500">Posição, rentabilidade, instituição e meta de alocação.</p></div><label className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-900"><Search className="h-4 w-4 text-neutral-400"/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar ativo..." className="w-full bg-transparent py-2.5 text-sm outline-none sm:w-52"/></label></div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">Carteira de ativos ({investments.length})</h4><p className="text-xs text-neutral-500">Posição, rentabilidade, instituição e meta de alocação.</p></div><label className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-900"><Search className="h-4 w-4 text-neutral-400"/><input ref={searchInputRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar ativo..." className="w-full bg-transparent py-2.5 text-sm outline-none sm:w-52"/></label></div>
 
         <div className="rounded-3xl border border-neutral-200 bg-white overflow-hidden shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -347,8 +403,7 @@ export const FinanceInvestmentsTab: React.FC = () => {
 
                     <button
                       onClick={() => {
-                        setAporteAssetId(asset.id);
-                        setAporteAmount('200');
+                        openAporteForm(asset.id);
                       }}
                       className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-bold text-neutral-800 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
                     >
@@ -360,7 +415,7 @@ export const FinanceInvestmentsTab: React.FC = () => {
                 </div>
               );
             })}
-            {!filteredInvestments.length && <div className="p-10 text-center"><BriefcaseBusiness className="mx-auto h-6 w-6 text-neutral-400"/><p className="mt-2 text-sm font-bold">Nenhum ativo encontrado</p><p className="text-xs text-neutral-500">Cadastre seu primeiro ativo ou ajuste a busca.</p></div>}
+            {!filteredInvestments.length && <div className="p-10 text-center"><BriefcaseBusiness className="mx-auto h-6 w-6 text-neutral-400"/><p className="mt-2 text-sm font-bold">Nenhum ativo encontrado</p><p className="text-xs text-neutral-500">Cadastre seu primeiro investimento ou ajuste a busca.</p>{!investments.length && <button onClick={() => openAssetForm('investment')} className="mt-4 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white">Criar primeiro investimento</button>}</div>}
           </div>
         </div>
       </div>
@@ -368,7 +423,7 @@ export const FinanceInvestmentsTab: React.FC = () => {
       {editingAsset && <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm"><form onSubmit={(event) => { event.preventDefault(); updateInvestmentAsset(editingAsset.id, editingAsset); setEditingAsset(null); }} className="w-full max-w-lg space-y-4 rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900"><div className="flex items-center justify-between"><div><h3 className="text-base font-black">Editar ativo</h3><p className="text-xs text-neutral-500">Atualize os valores reais da sua posição.</p></div><button type="button" onClick={() => setEditingAsset(null)}><X className="h-5 w-5"/></button></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold">Nome ou ticker<input required value={editingAsset.tickerOrName} onChange={(e) => setEditingAsset({ ...editingAsset, tickerOrName: e.target.value.toUpperCase() })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label><label className="text-xs font-bold">Instituição<input required value={editingAsset.institution} onChange={(e) => setEditingAsset({ ...editingAsset, institution: e.target.value })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label><label className="text-xs font-bold">Quantidade<input type="number" min="0" step="0.000001" value={editingAsset.quantity} onChange={(e) => setEditingAsset({ ...editingAsset, quantity: Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label><label className="text-xs font-bold">Preço atual<input type="number" min="0" step="0.01" value={editingAsset.currentPrice} onChange={(e) => setEditingAsset({ ...editingAsset, currentPrice: Number(e.target.value), currentValue: editingAsset.quantity * Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label><label className="text-xs font-bold">Valor atual<input type="number" min="0" step="0.01" value={editingAsset.currentValue} onChange={(e) => setEditingAsset({ ...editingAsset, currentValue: Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label><label className="text-xs font-bold">Meta de alocação (%)<input type="number" min="0" max="100" step="0.1" value={editingAsset.targetAllocationPercent} onChange={(e) => setEditingAsset({ ...editingAsset, targetAllocationPercent: Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label></div><div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingAsset(null)} className="rounded-xl border border-neutral-200 px-4 py-2 text-xs font-bold dark:border-neutral-700">Cancelar</button><button type="submit" className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white">Salvar alterações</button></div></form></div>}
 
       {/* Aporte Modal */}
-      {aporteAssetId && (
+      {isAporteOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <form
             onSubmit={handleConfirmAporte}
@@ -380,12 +435,36 @@ export const FinanceInvestmentsTab: React.FC = () => {
               </span>
               <button
                 type="button"
-                onClick={() => setAporteAssetId(null)}
+                onClick={() => setIsAporteOpen(false)}
                 className="text-neutral-400 hover:text-neutral-600"
+                aria-label="Fechar registro de aporte"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {!investments.length ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                <b className="block">Cadastre um investimento primeiro</b>
+                <span className="mt-1 block text-xs">O aporte precisa ser vinculado a um ativo da carteira.</span>
+                <button type="button" onClick={() => { setIsAporteOpen(false); openAssetForm('investment'); }} className="mt-3 rounded-xl bg-amber-900 px-3 py-2 text-xs font-bold text-white dark:bg-amber-200 dark:text-amber-950">Criar investimento</button>
+              </div>
+            ) : (
+              <div>
+                <label className="mb-1 block text-[11px] font-bold text-neutral-600 dark:text-neutral-400">
+                  Investimento
+                </label>
+                <select
+                  required
+                  value={aporteAssetId}
+                  onChange={(e) => setAporteAssetId(e.target.value)}
+                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                >
+                  <option value="">Selecione um investimento</option>
+                  {investments.map((asset) => <option key={asset.id} value={asset.id}>{asset.tickerOrName} · {asset.institution}</option>)}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
@@ -402,33 +481,50 @@ export const FinanceInvestmentsTab: React.FC = () => {
             </div>
 
             <div>
+              <label className="mb-1 block text-[11px] font-bold text-neutral-600 dark:text-neutral-400">
+                Quantidade adquirida <span className="font-normal text-neutral-400">(opcional)</span>
+              </label>
+              <input
+                type="text"
+                value={aporteQuantity}
+                onChange={(e) => setAporteQuantity(e.target.value)}
+                placeholder="Ex: 2 ou 0,015"
+                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+              />
+            </div>
+
+            <div>
               <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
                 Conta de Origem
               </label>
               <select
+                required
                 value={selectedAccId}
                 onChange={(e) => setSelectedAccId(e.target.value)}
                 className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
               >
+                <option value="">Selecione uma conta</option>
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} (R$ {a.balance.toFixed(2)})
                   </option>
                 ))}
               </select>
+              {!accounts.length && <div className="mt-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Você ainda não tem uma conta de origem. <button type="button" onClick={() => { setIsAporteOpen(false); setSubTab('accounts'); }} className="font-bold underline">Cadastrar conta</button></div>}
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setAporteAssetId(null)}
+                onClick={() => setIsAporteOpen(false)}
                 className="rounded-xl border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                disabled={!investments.length || !accounts.length || !aporteAssetId || !selectedAccId}
+                className="rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Confirmar Aporte
               </button>
@@ -438,101 +534,63 @@ export const FinanceInvestmentsTab: React.FC = () => {
       )}
 
       {/* Add Asset Modal */}
-      {isAddAssetOpen && (
-        <form
-          onSubmit={handleAddAsset}
-          className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 space-y-4 animate-in fade-in"
-        >
-          <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
-            <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-              Cadastrar Ativo na Carteira
-            </span>
-            <button
-              type="button"
-              onClick={() => setIsAddAssetOpen(false)}
-              className="text-neutral-400 hover:text-neutral-600"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div>
-              <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
-                Ticker / Código
-              </label>
-              <input
-                type="text"
-                required
-                value={ticker}
-                onChange={(e) => setTicker(e.target.value)}
-                placeholder="Ex: HGLG11, IVVB11..."
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-              />
+      {assetFormMode && (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={handleAddAsset}
+            className="w-full max-w-2xl space-y-5 rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900"
+          >
+            <div className="flex items-start justify-between border-b border-neutral-100 pb-4 dark:border-neutral-800">
+              <div>
+                <h3 className="text-base font-black text-neutral-900 dark:text-neutral-100">{assetFormMode === 'patrimony' ? 'Adicionar patrimônio' : 'Novo investimento'}</h3>
+                <p className="mt-1 text-xs text-neutral-500">{assetFormMode === 'patrimony' ? 'Registre uma posição ou um bem que você já possui, sem criar uma despesa.' : 'Crie o investimento agora e registre os aportes separadamente.'}</p>
+              </div>
+              <button type="button" onClick={() => setAssetFormMode(null)} aria-label="Fechar cadastro" className="text-neutral-400 hover:text-neutral-600"><X className="h-5 w-5" /></button>
             </div>
 
-            <div>
-              <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
-                Classe do Ativo
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Nome ou ticker
+                <input autoFocus type="text" required value={ticker} onChange={(e) => setTicker(e.target.value)} placeholder={assetFormMode === 'patrimony' ? 'Ex: Imóvel, veículo, CDB...' : 'Ex: HGLG11, IVVB11...'} className="mt-1.5 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-sm font-normal text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100" />
               </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as InvestmentCategory)}
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-              >
-                <option value="renda_fixa">Renda Fixa / Tesouro</option>
-                <option value="fiis">Fundos Imobiliários (FIIs)</option>
-                <option value="acoes_br">Ações Brasil</option>
-                <option value="acoes_int">Ações Internacionais / ETFs</option>
-                <option value="crypto">Criptomoedas / Bitcoin</option>
-                <option value="outros">Outros Ativos</option>
-              </select>
+
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Classe do ativo
+                <select value={category} onChange={(e) => setCategory(e.target.value as InvestmentCategory)} className="mt-1.5 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-sm font-normal text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100">
+                  <option value="renda_fixa">Renda Fixa / Tesouro</option>
+                  <option value="fiis">Fundos Imobiliários (FIIs)</option>
+                  <option value="acoes_br">Ações Brasil</option>
+                  <option value="acoes_int">Ações Internacionais</option>
+                  <option value="etfs">ETFs</option>
+                  <option value="fundos">Fundos</option>
+                  <option value="crypto">Criptomoedas</option>
+                  <option value="outros">Outros patrimônios</option>
+                </select>
+              </label>
+
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Instituição ou localização
+                <input type="text" value={institution} onChange={(e) => setInstitution(e.target.value)} placeholder={assetFormMode === 'patrimony' ? 'Ex: Patrimônio pessoal' : 'Ex: XP, BTG, NuInvest'} className="mt-1.5 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-sm font-normal text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100" />
+              </label>
+
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Meta de alocação (%)
+                <input type="number" min="0" max="100" step="0.1" value={targetAlloc} onChange={(e) => setTargetAlloc(e.target.value)} className="mt-1.5 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-sm font-normal text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100" />
+              </label>
+
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Quantidade {assetFormMode === 'investment' && <span className="font-normal text-neutral-400">(opcional)</span>}
+                <input type="number" min="0" step="0.000001" required={assetFormMode === 'patrimony'} value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0" className="mt-1.5 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-sm font-normal text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100" />
+              </label>
+
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Preço médio unitário (R$) {assetFormMode === 'investment' && <span className="font-normal text-neutral-400">(opcional)</span>}
+                <input type="number" min="0" step="0.01" required={assetFormMode === 'patrimony'} value={avgPrice} onChange={(e) => setAvgPrice(e.target.value)} placeholder="0,00" className="mt-1.5 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-sm font-normal text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100" />
+              </label>
             </div>
 
-            <div>
-              <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
-                Quantidade
-              </label>
-              <input
-                type="text"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="1"
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-              />
-            </div>
+            {assetFormMode === 'investment' && <p className="rounded-xl bg-blue-50 p-3 text-xs text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">Se este investimento ainda não tem saldo, deixe quantidade e preço zerados. Depois use “Registrar aporte” para movimentar o dinheiro da conta de origem.</p>}
 
-            <div>
-              <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
-                Preço Médio Unitário (R$)
-              </label>
-              <input
-                type="text"
-                required
-                value={avgPrice}
-                onChange={(e) => setAvgPrice(e.target.value)}
-                placeholder="0,00"
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-              />
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setAssetFormMode(null)} className="rounded-xl border border-neutral-200 px-4 py-2.5 text-xs font-bold text-neutral-600 dark:border-neutral-700 dark:text-neutral-300">Cancelar</button>
+              <button type="submit" className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-700">{assetFormMode === 'patrimony' ? 'Adicionar patrimônio' : 'Criar investimento'}</button>
             </div>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setIsAddAssetOpen(false)}
-              className="rounded-xl border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="rounded-xl bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-700"
-            >
-              Salvar Ativo
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       )}
     </div>
   );

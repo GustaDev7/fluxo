@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getTransactionImpact, money } from './financeLedger';
+import { calculateInvestmentContribution, getTransactionImpact, money } from './financeLedger';
 import type { FinanceTransaction } from '../types/finance';
 
 const transaction = (updates: Partial<FinanceTransaction>): FinanceTransaction => ({
@@ -33,5 +33,36 @@ describe('finance ledger', () => {
   it('tracks deposits and withdrawals from the emergency fund', () => {
     expect(getTransactionImpact(transaction({ type: 'transfer', tags: ['reserva'] })).emergencyFund).toBe(100);
     expect(getTransactionImpact(transaction({ type: 'income', tags: ['reserva', 'resgate'] })).emergencyFund).toBe(-100);
+  });
+
+  it('updates an investment position and weighted average on contribution', () => {
+    expect(calculateInvestmentContribution({
+      quantity: 10,
+      totalInvested: 1_000,
+      averagePrice: 100,
+      currentPrice: 125,
+      amount: 250,
+    })).toEqual({
+      quantity: 12,
+      totalInvested: 1_250,
+      averagePrice: 1_250 / 12,
+      currentValue: 1_500,
+    });
+  });
+
+  it('supports the first contribution when the asset has no price yet', () => {
+    expect(calculateInvestmentContribution({
+      quantity: 0,
+      totalInvested: 0,
+      averagePrice: 0,
+      currentPrice: 0,
+      amount: 300,
+      acquiredQuantity: 3,
+    })).toEqual({
+      quantity: 3,
+      totalInvested: 300,
+      averagePrice: 100,
+      currentValue: 300,
+    });
   });
 });

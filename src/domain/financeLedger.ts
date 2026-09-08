@@ -15,6 +15,40 @@ export interface TransactionImpact {
   emergencyFund: number;
 }
 
+export interface InvestmentPosition {
+  quantity: number;
+  totalInvested: number;
+  averagePrice: number;
+  currentValue: number;
+}
+
+export function calculateInvestmentContribution(input: {
+  quantity: number;
+  totalInvested: number;
+  averagePrice: number;
+  currentPrice: number;
+  amount: number;
+  acquiredQuantity?: number;
+}): InvestmentPosition {
+  const amount = money(input.amount);
+  if (!isPositiveMoney(amount)) {
+    throw new Error('O valor do aporte deve ser maior que zero.');
+  }
+
+  const unitPrice = input.currentPrice > 0 ? input.currentPrice : input.averagePrice;
+  const acquiredQuantity = input.acquiredQuantity && input.acquiredQuantity > 0
+    ? input.acquiredQuantity
+    : unitPrice > 0
+      ? amount / unitPrice
+      : 0;
+  const quantity = input.quantity + acquiredQuantity;
+  const totalInvested = money(input.totalInvested + amount);
+  const averagePrice = quantity > 0 ? totalInvested / quantity : 0;
+  const currentValue = unitPrice > 0 ? money(quantity * unitPrice) : totalInvested;
+
+  return { quantity, totalInvested, averagePrice, currentValue };
+}
+
 export function getTransactionImpact(transaction: FinanceTransaction): TransactionImpact {
   const amount = money(transaction.amount);
   const sourceAccount = transaction.type === 'income' || transaction.type === 'redemption'
