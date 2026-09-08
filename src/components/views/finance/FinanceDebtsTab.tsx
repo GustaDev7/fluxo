@@ -34,6 +34,14 @@ import {
   Flame,
   Info,
   DollarSign,
+  Search,
+  SlidersHorizontal,
+  CreditCard,
+  Banknote,
+  PieChart,
+  ChevronRight,
+  MoreHorizontal,
+  ListChecks,
 } from 'lucide-react';
 
 export const FinanceDebtsTab: React.FC = () => {
@@ -49,6 +57,7 @@ export const FinanceDebtsTab: React.FC = () => {
     addTransaction,
     emergencyCoverage,
     setSubTab,
+    monthIncome,
   } = useFinance();
 
   // Modal / Form States
@@ -91,6 +100,10 @@ export const FinanceDebtsTab: React.FC = () => {
   const [editStatus, setEditStatus] = useState<'active' | 'paid'>('active');
 
   const [selectedMethod, setSelectedMethod] = useState<'avalanche' | 'snowball'>('avalanche');
+  const [selectedDebtId, setSelectedDebtId] = useState<string>('');
+  const [debtSearch, setDebtSearch] = useState('');
+  const [debtStatusFilter, setDebtStatusFilter] = useState<'all' | 'open' | 'overdue' | 'paid' | 'paused'>('all');
+  const [debtDetailTab, setDebtDetailTab] = useState<'overview' | 'installments' | 'amortization' | 'simulator' | 'history'>('overview');
 
   // --- Handlers for Add Form ---
   const handleOpenAdd = () => {
@@ -460,6 +473,23 @@ export const FinanceDebtsTab: React.FC = () => {
 
   return (
     <div className="space-y-8">
+      <DebtDashboardV2
+        debts={debts}
+        monthIncome={monthIncome}
+        selectedDebtId={selectedDebtId}
+        onSelectDebt={(id) => { setSelectedDebtId(id); setDebtDetailTab('overview'); }}
+        search={debtSearch}
+        onSearch={setDebtSearch}
+        statusFilter={debtStatusFilter}
+        onStatusFilter={setDebtStatusFilter}
+        detailTab={debtDetailTab}
+        onDetailTab={setDebtDetailTab}
+        onAdd={handleOpenAdd}
+        onEdit={handleOpenEdit}
+        onPay={(debt) => { setPayingDebt(debt); setSelectedAccountId(accounts[0]?.id || ''); }}
+        onAmortize={(debt) => handleOpenAmortizeModal(debt, 'balance')}
+      />
+      {false && <>
       {/* Quick Link to Dedicated Emergency Fund */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-emerald-100 bg-emerald-50/40 p-5 dark:border-emerald-950/60 dark:bg-emerald-950/20">
         <div className="flex items-center gap-3">
@@ -786,6 +816,8 @@ export const FinanceDebtsTab: React.FC = () => {
           </div>
         )}
       </div>
+
+      </>}
 
       {/* MODAL: Cadastrar Nova Dívida */}
       {isAddDebtOpen && (
@@ -1747,3 +1779,106 @@ export const FinanceDebtsTab: React.FC = () => {
     </div>
   );
 };
+
+type DebtDashboardProps = {
+  debts: FinanceDebt[];
+  monthIncome: number;
+  selectedDebtId: string;
+  onSelectDebt: (id: string) => void;
+  search: string;
+  onSearch: (value: string) => void;
+  statusFilter: 'all' | 'open' | 'overdue' | 'paid' | 'paused';
+  onStatusFilter: (value: 'all' | 'open' | 'overdue' | 'paid' | 'paused') => void;
+  detailTab: 'overview' | 'installments' | 'amortization' | 'simulator' | 'history';
+  onDetailTab: (value: 'overview' | 'installments' | 'amortization' | 'simulator' | 'history') => void;
+  onAdd: () => void;
+  onEdit: (debt: FinanceDebt) => void;
+  onPay: (debt: FinanceDebt) => void;
+  onAmortize: (debt: FinanceDebt) => void;
+};
+
+const DebtDashboardV2: React.FC<DebtDashboardProps> = ({
+  debts, monthIncome, selectedDebtId, onSelectDebt, search, onSearch, statusFilter,
+  onStatusFilter, detailTab, onDetailTab, onAdd, onEdit, onPay, onAmortize,
+}) => {
+  const activeDebts = debts.filter((debt) => debt.status !== 'paid' && debt.status !== 'cancelled');
+  const selected = debts.find((debt) => debt.id === selectedDebtId) || activeDebts[0] || debts[0];
+  const totalBalance = activeDebts.reduce((sum, debt) => sum + Math.max(0, debt.currentBalance), 0);
+  const totalOriginal = activeDebts.reduce((sum, debt) => sum + Math.max(0, debt.financedPrincipal || debt.originalAmount), 0);
+  const totalMonthly = activeDebts.reduce((sum, debt) => sum + Math.max(0, debt.installmentAmount), 0);
+  const remainingInterest = activeDebts.reduce((sum, debt) => sum + calculateDebtInterestBreakdown(debt.currentBalance, debt.installmentAmount, debt.remainingInstallments, debt.interestRateMonthly).interestSavings, 0);
+  const totalAtTerm = totalBalance + remainingInterest;
+  const commitment = monthIncome > 0 ? totalMonthly / monthIncome * 100 : 0;
+  const overdue = debts.filter((debt) => debt.status === 'overdue');
+  const paused = debts.filter((debt) => debt.status === 'suspended');
+  const paid = debts.filter((debt) => debt.status === 'paid');
+  const nextDebt = [...activeDebts].sort((a, b) => getDebtDueDateStatus(a.dueDay || 10).daysRemaining - getDebtDueDateStatus(b.dueDay || 10).daysRemaining)[0];
+  const visible = debts.filter((debt) => {
+    const matchesText = `${debt.creditor} ${debt.name || ''}`.toLowerCase().includes(search.trim().toLowerCase());
+    const matchesStatus = statusFilter === 'all' ||
+      (statusFilter === 'open' && !['paid', 'cancelled', 'suspended'].includes(debt.status)) ||
+      (statusFilter === 'overdue' && debt.status === 'overdue') ||
+      (statusFilter === 'paid' && debt.status === 'paid') ||
+      (statusFilter === 'paused' && debt.status === 'suspended');
+    return matchesText && matchesStatus;
+  });
+  const colors = ['#4f46e5', '#10b981', '#a855f7', '#f59e0b', '#ef4444', '#06b6d4'];
+  let runningShare = 0;
+  const donutStops = activeDebts.map((debt, index) => {
+    const start = runningShare;
+    runningShare += totalBalance > 0 ? debt.currentBalance / totalBalance * 100 : 0;
+    return `${colors[index % colors.length]} ${start}% ${runningShare}%`;
+  }).join(', ');
+  const curve = Array.from({ length: 12 }, (_, index) => {
+    const principalMonthly = Math.max(0, totalMonthly - activeDebts.reduce((sum, debt) => sum + debt.currentBalance * (debt.interestRateMonthly / 100), 0));
+    return Math.max(0, totalBalance - principalMonthly * index);
+  });
+  const curveMax = Math.max(totalBalance, 1);
+  const curvePoints = curve.map((value, index) => `${24 + index / 11 * 752},${180 - value / curveMax * 140}`).join(' ');
+
+  const tabs = [
+    ['overview', 'Visão Geral'], ['installments', 'Parcelas'], ['amortization', 'Amortização'],
+    ['simulator', 'Simulador'], ['history', 'Histórico'],
+  ] as const;
+
+  return <div className="space-y-4">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-2xl font-black">Dívidas</h2><p className="mt-1 text-sm text-neutral-500">Acompanhe saldos, juros, parcelas e planeje sua quitação.</p></div><div className="grid grid-cols-2 gap-2"><button disabled={!selected} onClick={() => selected && onAmortize(selected)} className="rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-3 py-2.5 text-sm font-bold text-indigo-500 disabled:opacity-40">Simular quitação</button><button onClick={onAdd} className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-bold text-white"><Plus className="h-4 w-4" />Nova dívida</button></div></div>
+
+    <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 2xl:grid-cols-5">
+      <DebtMetric icon={Layers} color="rose" label="Total das dívidas" value={formatBRL(totalAtTerm)} detail={`${activeDebts.length} dívidas ativas`} />
+      <DebtMetric icon={DollarSign} color="blue" label="Saldo devedor (principal)" value={formatBRL(totalBalance)} detail={totalAtTerm > 0 ? formatPercent(totalBalance / totalAtTerm * 100) + ' do total' : '0% do total'} />
+      <DebtMetric icon={TrendingDown} color="emerald" label="Juros estimados restantes" value={formatBRL(remainingInterest)} detail={totalAtTerm > 0 ? formatPercent(remainingInterest / totalAtTerm * 100) + ' do total' : '0% do total'} />
+      <DebtMetric icon={Calendar} color="violet" label="Parcelas mensais" value={formatBRL(totalMonthly)} detail={`${activeDebts.length} compromissos ativos`} />
+      <DebtMetric icon={Clock} color="amber" label="Próximo vencimento" value={nextDebt ? getDebtDueDateStatus(nextDebt.dueDay || 10).formattedDate : '—'} detail={nextDebt ? `${nextDebt.creditor} · em ${getDebtDueDateStatus(nextDebt.dueDay || 10).daysRemaining} dias` : 'Nenhum vencimento'} />
+    </div>
+
+    <div className="grid gap-4 xl:grid-cols-[.8fr_1fr]"><div className="flex flex-col items-center gap-5 rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900 sm:flex-row"><div className="relative h-32 w-32 shrink-0 rounded-full" style={{ background: `conic-gradient(#4f46e5 0 ${Math.min(100, commitment)}%, #27272a ${Math.min(100, commitment)}% 100%)` }}><div className="absolute inset-4 flex items-center justify-center rounded-full bg-white dark:bg-neutral-900"><strong className="text-xl">{formatPercent(commitment)}</strong></div></div><div><h3 className="font-black">Comprometimento da renda</h3><p className="mt-1 text-sm text-neutral-500">As parcelas representam {formatPercent(commitment)} da renda mensal registrada ({formatBRL(monthIncome)}).</p><span className={`mt-3 inline-flex rounded-full px-3 py-1.5 text-xs font-bold ${commitment <= 30 ? 'bg-emerald-500/15 text-emerald-500' : commitment <= 45 ? 'bg-amber-500/15 text-amber-500' : 'bg-rose-500/15 text-rose-500'}`}>{commitment <= 30 ? 'Situação controlada' : commitment <= 45 ? 'Atenção necessária' : 'Comprometimento elevado'}</span></div></div>
+      <div className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"><div className="flex items-center justify-between"><h3 className="text-sm font-black">Evolução do saldo devedor</h3><span className="text-xs text-neutral-500">Projeção de 12 meses</span></div><svg viewBox="0 0 800 205" className="mt-3 h-48 w-full" role="img" aria-label="Projeção do saldo devedor">{[40, 75, 110, 145, 180].map(y => <line key={y} x1="24" x2="776" y1={y} y2={y} stroke="currentColor" className="text-neutral-200 dark:text-neutral-800" />)}<polygon points={`24,180 ${curvePoints} 776,180`} fill="#4f46e5" opacity=".12" /><polyline points={curvePoints} fill="none" stroke="#6366f1" strokeWidth="3" />{curve.map((value, index) => <circle key={index} cx={24 + index / 11 * 752} cy={180 - value / curveMax * 140} r="3" fill="#6366f1"><title>Mês {index + 1}: {formatBRL(value)}</title></circle>)}</svg></div></div>
+
+    <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between"><div className="flex gap-1 overflow-x-auto pb-1">{([['all', 'Todas', debts.length], ['open', 'Abertas', activeDebts.length], ['overdue', 'Em atraso', overdue.length], ['paid', 'Quitadas', paid.length], ['paused', 'Pausadas', paused.length]] as const).map(([id, label, count]) => <button key={id} onClick={() => onStatusFilter(id)} className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold ${statusFilter === id ? 'border border-indigo-500/60 bg-indigo-500/10 text-indigo-500' : 'text-neutral-500'}`}>{label} ({count})</button>)}</div><label className="flex min-w-0 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-900 sm:min-w-64"><Search className="h-4 w-4 text-neutral-500" /><input value={search} onChange={event => onSearch(event.target.value)} placeholder="Buscar dívidas..." className="w-full min-w-0 bg-transparent py-2.5 text-sm outline-none" /><SlidersHorizontal className="h-4 w-4 text-neutral-500" /></label></div>
+
+    {debts.length === 0 ? <div className="rounded-2xl border border-dashed border-neutral-300 p-12 text-center dark:border-neutral-700"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-500" /><h3 className="mt-3 font-black">Nenhuma dívida cadastrada</h3><p className="mt-1 text-sm text-neutral-500">Cadastre uma dívida para acompanhar parcelas e juros.</p><button onClick={onAdd} className="mt-4 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">Nova dívida</button></div> : <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_390px]"><div className="min-w-0 space-y-3">{visible.map((debt, index) => <div key={debt.id}><DebtRow debt={debt} selected={selected?.id === debt.id} color={colors[index % colors.length]} onClick={() => onSelectDebt(debt.id)} /></div>)}{!visible.length && <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-neutral-500">Nenhuma dívida encontrada.</div>}
+        <div className="grid gap-4 lg:grid-cols-3"><DebtDistribution debts={activeDebts} total={totalBalance} colors={colors} stops={donutStops} /><DebtStatusChart active={activeDebts.length} overdue={overdue.length} paid={paid.length} paused={paused.length} /><UpcomingDebts debts={activeDebts} /></div></div>
+        {selected && <DebtDetail debt={selected} tab={detailTab} onTab={onDetailTab} onEdit={() => onEdit(selected)} onPay={() => onPay(selected)} onAmortize={() => onAmortize(selected)} />}
+      </div>}
+  </div>;
+};
+
+const DebtMetric = ({ icon: Icon, color, label, value, detail }: { icon: typeof Layers; color: 'rose' | 'blue' | 'emerald' | 'violet' | 'amber'; label: string; value: string; detail: string }) => { const colors = { rose: 'bg-rose-500/15 text-rose-500', blue: 'bg-blue-500/15 text-blue-500', emerald: 'bg-emerald-500/15 text-emerald-500', violet: 'bg-violet-500/15 text-violet-500', amber: 'bg-amber-500/15 text-amber-500' }; return <div className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"><div className="flex gap-3"><span className={`rounded-xl p-2.5 ${colors[color]}`}><Icon className="h-5 w-5" /></span><div className="min-w-0"><span className="text-xs text-neutral-500">{label}</span><strong className="mt-1 block truncate text-lg">{value}</strong><span className="text-xs text-neutral-500">{detail}</span></div></div></div>; };
+
+const debtLabel = (debt: FinanceDebt) => debt.status === 'paid' ? 'Quitada' : debt.status === 'overdue' ? 'Em atraso' : debt.status === 'suspended' ? 'Pausada' : debt.status === 'renegotiated' ? 'Negociada' : 'Em andamento';
+const DebtRow = ({ debt, selected, color, onClick }: { debt: FinanceDebt; selected: boolean; color: string; onClick: () => void }) => { const total = Math.max(1, debt.totalInstallments); const paid = Math.max(0, total - debt.remainingInstallments); const due = getDebtDueDateStatus(debt.dueDay || 10); return <button onClick={onClick} className={`grid w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left dark:bg-neutral-900 md:grid-cols-[minmax(180px,1.5fr)_repeat(4,minmax(90px,1fr))_24px] ${selected ? 'border-indigo-500 ring-1 ring-indigo-500/30' : 'border-neutral-200 dark:border-neutral-800'}`}><div className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white" style={{ backgroundColor: color }}>{debt.type === 'credit_card' ? <CreditCard className="h-5 w-5" /> : <Banknote className="h-5 w-5" />}</span><div className="min-w-0"><strong className="block truncate text-sm">{debt.name || debt.creditor}</strong><span className="block truncate text-xs text-neutral-500">{debt.creditor}</span><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${debt.status === 'overdue' ? 'bg-rose-500/15 text-rose-500' : debt.status === 'paid' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-emerald-500/15 text-emerald-500'}`}>{debtLabel(debt)}</span></div></div><DebtCell label="Saldo devedor" value={formatBRL(debt.currentBalance)} /><DebtCell label="Parcela" value={formatBRL(debt.installmentAmount)} /><DebtCell label="Parcelas" value={`${paid} / ${total}`} /><DebtCell label="Próximo vencimento" value={debt.status === 'paid' ? 'Quitada' : due.formattedDate} detail={debt.status === 'paid' ? '' : `Em ${due.daysRemaining} dias`} /><ChevronRight className="hidden h-4 w-4 md:block" /></button>; };
+const DebtCell = ({ label, value, detail }: { label: string; value: string; detail?: string }) => <div className="hidden min-w-0 md:block"><span className="block text-[11px] text-neutral-500">{label}</span><strong className="block truncate text-sm">{value}</strong>{detail && <span className="text-[11px] text-neutral-500">{detail}</span>}</div>;
+
+const DebtDetail = ({ debt, tab, onTab, onEdit, onPay, onAmortize }: { debt: FinanceDebt; tab: DebtDashboardProps['detailTab']; onTab: DebtDashboardProps['onDetailTab']; onEdit: () => void; onPay: () => void; onAmortize: () => void }) => { const total = Math.max(1, debt.totalInstallments); const remaining = Math.max(0, debt.remainingInstallments); const paid = total - remaining; const paidPercent = total > 0 ? paid / total * 100 : 0; const due = getDebtDueDateStatus(debt.dueDay || 10); const interest = calculateDebtInterestBreakdown(debt.currentBalance, debt.installmentAmount, remaining, debt.interestRateMonthly); const tabItems = [['overview', 'Visão Geral'], ['installments', 'Parcelas'], ['amortization', 'Amortização'], ['simulator', 'Simulador'], ['history', 'Histórico']] as const; return <aside className="h-fit min-w-0 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900 2xl:sticky 2xl:top-0"><div className="flex items-start justify-between gap-3"><div><h3 className="font-black">{debt.name || debt.creditor}</h3><span className="mt-1 inline-flex rounded-full bg-emerald-500/15 px-2 py-1 text-xs font-bold text-emerald-500">{debtLabel(debt)}</span></div><div className="flex gap-2"><button onClick={onEdit} className="flex items-center gap-1 rounded-xl border px-3 py-2 text-xs font-bold dark:border-neutral-700"><Edit2 className="h-3.5 w-3.5" />Editar</button><MoreHorizontal className="h-4 w-4 text-neutral-500" /></div></div><div className="mt-4 flex overflow-x-auto border-b dark:border-neutral-800">{tabItems.map(([id, label]) => <button key={id} onClick={() => onTab(id)} className={`shrink-0 border-b-2 px-2.5 py-2.5 text-xs font-bold ${tab === id ? 'border-indigo-500 text-indigo-500' : 'border-transparent text-neutral-500'}`}>{label}</button>)}</div>
+    {tab === 'overview' && <div className="mt-4 space-y-3"><div className="rounded-xl border p-4 dark:border-neutral-800"><div className="flex justify-between"><div><span className="text-xs text-neutral-500">Saldo devedor</span><strong className="block text-xl">{formatBRL(debt.currentBalance)}</strong></div><span className="text-xs font-bold">{formatPercent(paidPercent)} quitado</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${paidPercent}%` }} /></div><div className="mt-4 grid grid-cols-2 gap-3 text-xs"><DebtCellVisible label="Valor original" value={formatBRL(debt.financedPrincipal || debt.originalAmount)} /><DebtCellVisible label="Juros futuros" value={formatBRL(interest.interestSavings)} /><DebtCellVisible label="Parcelas pagas" value={String(paid)} /><DebtCellVisible label="Parcelas restantes" value={String(remaining)} /></div></div><div className="grid grid-cols-2 gap-3"><DebtMini label="Parcela atual" value={formatBRL(debt.installmentAmount)} /><DebtMini label="Taxa de juros" value={`${formatPercent(debt.interestRateMonthly)} a.m.`} /><DebtMini label="Próximo vencimento" value={due.formattedDate} /><DebtMini label="Custo restante" value={formatBRL(interest.nominalTotal)} /></div></div>}
+    {tab === 'installments' && <div className="mt-4 max-h-96 space-y-2 overflow-y-auto">{debt.schedule?.length ? debt.schedule.map(item => <div key={item.id} className="flex justify-between rounded-xl border p-3 text-xs dark:border-neutral-800"><span>Parcela {item.number} · {dateLabelDebt(item.dueDate)}</span><strong>{formatBRL(item.scheduledAmount)}</strong></div>) : <p className="py-10 text-center text-sm text-neutral-500">Cronograma ainda não disponível.</p>}</div>}
+    {(tab === 'amortization' || tab === 'simulator') && <div className="py-10 text-center"><Zap className="mx-auto h-9 w-9 text-amber-500" /><h4 className="mt-3 font-black">Simule uma amortização</h4><p className="mt-1 text-sm text-neutral-500">Calcule a redução do saldo e dos juros sem alterar os dados.</p><button onClick={onAmortize} className="mt-4 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white">Abrir simulador</button></div>}
+    {tab === 'history' && <div className="py-10 text-center"><History className="mx-auto h-9 w-9 text-neutral-500" /><p className="mt-3 text-sm text-neutral-500">Pagamentos registrados aparecem no histórico financeiro.</p></div>}
+    <div className="mt-4 grid grid-cols-3 gap-2"><button disabled={remaining <= 0} onClick={onPay} className="rounded-xl bg-indigo-600 px-2 py-2.5 text-xs font-bold text-white disabled:opacity-40">Pagar parcela</button><button onClick={onAmortize} className="rounded-xl border px-2 py-2.5 text-xs font-bold dark:border-neutral-700">Amortizar</button><button onClick={onAmortize} className="rounded-xl border px-2 py-2.5 text-xs font-bold dark:border-neutral-700">Quitar</button></div></aside>; };
+const DebtCellVisible = ({ label, value }: { label: string; value: string }) => <div><span className="text-neutral-500">{label}</span><strong className="block">{value}</strong></div>;
+const DebtMini = ({ label, value }: { label: string; value: string }) => <div className="rounded-xl border p-3 dark:border-neutral-800"><span className="text-[11px] text-neutral-500">{label}</span><strong className="mt-1 block text-sm">{value}</strong></div>;
+const dateLabelDebt = (date: string) => new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
+const DebtDistribution = ({ debts, total, colors, stops }: { debts: FinanceDebt[]; total: number; colors: string[]; stops: string }) => <div className="rounded-2xl border bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"><h3 className="text-sm font-black">Distribuição das dívidas</h3><div className="mt-4 flex items-center gap-4"><div className="relative h-28 w-28 shrink-0 rounded-full" style={{ background: stops ? `conic-gradient(${stops})` : '#27272a' }}><div className="absolute inset-4 flex flex-col items-center justify-center rounded-full bg-white dark:bg-neutral-900"><strong className="text-xs">{formatBRL(total)}</strong><span className="text-[10px] text-neutral-500">Total</span></div></div><div className="min-w-0 space-y-2">{debts.slice(0, 4).map((debt, index) => <div key={debt.id} className="flex items-center gap-2 text-xs"><i className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colors[index % colors.length] }} /><span className="truncate">{debt.name || debt.creditor}</span><strong>{total > 0 ? formatPercent(debt.currentBalance / total * 100) : '0%'}</strong></div>)}</div></div></div>;
+const DebtStatusChart = ({ active, overdue, paid, paused }: { active: number; overdue: number; paid: number; paused: number }) => { const max = Math.max(active, overdue, paid, paused, 1); return <div className="rounded-2xl border bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"><h3 className="text-sm font-black">Dívidas por status</h3><div className="mt-5 flex h-28 items-end justify-around gap-3">{[['Abertas', active, '#6366f1'], ['Atraso', overdue, '#ef4444'], ['Quitadas', paid, '#10b981'], ['Pausadas', paused, '#737373']].map(([label, value, color]) => <div key={String(label)} className="flex h-full flex-1 flex-col items-center justify-end"><strong className="text-xs">{value as number}</strong><div className="mt-1 w-full max-w-8 rounded-t" style={{ height: `${Math.max(3, Number(value) / max * 80)}px`, background: String(color) }} /><span className="mt-1 text-[10px] text-neutral-500">{label as string}</span></div>)}</div></div>; };
+const UpcomingDebts = ({ debts }: { debts: FinanceDebt[] }) => <div className="rounded-2xl border bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"><h3 className="text-sm font-black">Próximos vencimentos</h3><div className="mt-3 space-y-3">{[...debts].sort((a, b) => getDebtDueDateStatus(a.dueDay).daysRemaining - getDebtDueDateStatus(b.dueDay).daysRemaining).slice(0, 4).map(debt => { const due = getDebtDueDateStatus(debt.dueDay); return <div key={debt.id} className="flex items-center justify-between gap-2 text-xs"><span className="min-w-0 truncate">{due.formattedDate} · {debt.name || debt.creditor}</span><strong>{formatBRL(debt.installmentAmount)}</strong></div>; })}</div></div>;
