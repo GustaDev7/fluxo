@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useFinance } from '../../../context/FinanceContext';
 import { formatBRL, formatPercent } from '../../../utils/financeUtils';
 import { InvestmentCategory, InvestmentAssetItem } from '../../../types/finance';
@@ -14,6 +14,11 @@ import {
   Coins,
   X,
   Check,
+  BarChart3,
+  BriefcaseBusiness,
+  Pencil,
+  Search,
+  Trash2,
 } from 'lucide-react';
 
 export const FinanceInvestmentsTab: React.FC = () => {
@@ -24,6 +29,8 @@ export const FinanceInvestmentsTab: React.FC = () => {
     budget,
     monthInvestments,
     addInvestmentAsset,
+    updateInvestmentAsset,
+    deleteInvestmentAsset,
     recordAporte,
   } = useFinance();
 
@@ -34,6 +41,8 @@ export const FinanceInvestmentsTab: React.FC = () => {
   const [avgPrice, setAvgPrice] = useState('');
   const [institution, setInstitution] = useState('NuInvest');
   const [targetAlloc, setTargetAlloc] = useState('15');
+  const [search, setSearch] = useState('');
+  const [editingAsset, setEditingAsset] = useState<InvestmentAssetItem | null>(null);
 
   // Aporte modal
   const [aporteAssetId, setAporteAssetId] = useState<string | null>(null);
@@ -78,6 +87,9 @@ export const FinanceInvestmentsTab: React.FC = () => {
   };
 
   const totalInvestedPortfolio = investments.reduce((acc, i) => acc + i.currentValue, 0);
+  const totalCost = investments.reduce((acc, i) => acc + i.totalInvested, 0);
+  const portfolioProfit = totalInvestedPortfolio - totalCost;
+  const portfolioProfitPct = totalCost > 0 ? portfolioProfit / totalCost * 100 : 0;
 
   // Group portfolio by category
   const categoryAllocations: Record<string, { name: string; currentVal: number; color: string }> = {
@@ -108,30 +120,37 @@ export const FinanceInvestmentsTab: React.FC = () => {
     }
   });
 
-  const targetAporte = budget.allocations.liberdade_financeira || 1200;
-  const aporteProgress = Math.min(100, Math.round((monthInvestments / targetAporte) * 100));
+  const targetAporte = budget.allocations.liberdade_financeira || 0;
+  const aporteProgress = targetAporte > 0 ? Math.min(100, Math.round((monthInvestments / targetAporte) * 100)) : 0;
+  const monthLabel = new Date(`${budget.month || new Date().toISOString().slice(0, 7)}-01T00:00:00Z`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const recommendedAsset = useMemo(() => investments.filter((asset) => asset.targetAllocationPercent > 0).map((asset) => ({ asset, current: totalInvestedPortfolio > 0 ? asset.currentValue / totalInvestedPortfolio * 100 : 0 })).sort((a, b) => (b.asset.targetAllocationPercent - b.current) - (a.asset.targetAllocationPercent - a.current))[0], [investments, totalInvestedPortfolio]);
+  const filteredInvestments = investments.filter((asset) => [asset.tickerOrName, asset.institution, asset.category].some((value) => value.toLowerCase().includes(search.toLowerCase())));
 
   return (
-    <div className="space-y-8">
-      {/* 1. Header & Net Worth Balance */}
-      <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-100 pb-5 dark:border-neutral-800">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div><div className="mb-2 flex items-center gap-2 text-xs font-semibold text-neutral-400"><span>Finanças</span><span>›</span><span className="text-neutral-600 dark:text-neutral-300">Investimentos</span></div><h2 className="text-2xl font-black">Investimentos</h2><p className="mt-1 text-sm text-neutral-500">Acompanhe sua carteira, rentabilidade, alocação e aportes em um só lugar.</p></div>
+        <div className="flex flex-wrap gap-2"><button onClick={() => investments[0] && setAporteAssetId(investments[0].id)} disabled={!investments.length} className="flex items-center gap-2 rounded-xl border border-indigo-500/40 px-4 py-2.5 text-xs font-bold text-indigo-500 disabled:opacity-40"><TrendingUp className="h-4 w-4"/>Registrar aporte</button><button onClick={() => setIsAddAssetOpen(true)} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white"><Plus className="h-4 w-4"/>Novo ativo</button></div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {[
+          ['Patrimônio investido', totalInvestedPortfolio, `${investments.length} ativos`, BriefcaseBusiness, 'text-indigo-500 bg-indigo-500/10'],
+          ['Total aportado', totalCost, 'Custo de aquisição', Coins, 'text-blue-500 bg-blue-500/10'],
+          ['Resultado da carteira', portfolioProfit, formatPercent(portfolioProfitPct), TrendingUp, portfolioProfit >= 0 ? 'text-emerald-500 bg-emerald-500/10' : 'text-rose-500 bg-rose-500/10'],
+          ['Aportes no mês', monthInvestments, targetAporte > 0 ? `Meta: ${formatBRL(targetAporte)}` : 'Sem meta definida', BarChart3, 'text-emerald-500 bg-emerald-500/10'],
+          ['Patrimônio líquido', netWorthSummary.netWorth, 'Ativos menos passivos', ShieldCheck, 'text-amber-500 bg-amber-500/10'],
+        ].map(([label, value, detail, Icon, color]) => { const MetricIcon = Icon as typeof TrendingUp; return <div key={String(label)} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><div className="flex items-start gap-3"><span className={`rounded-xl p-2.5 ${color}`}><MetricIcon className="h-5 w-5"/></span><div className="min-w-0"><span className="text-[11px] text-neutral-500">{String(label)}</span><b className="mt-1 block truncate text-lg">{formatBRL(Number(value))}</b><span className="text-[10px] text-neutral-500">{String(detail)}</span></div></div></div>; })}
+      </div>
+
+      <div className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-              Patrimônio & Carteira de Investimentos
-            </h3>
+            <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">Resumo patrimonial</h3>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              Construção e multiplicação da Liberdade Financeira (Método AUVP)
+              Contas, carteira, dívidas e faturas consolidadas.
             </p>
           </div>
-
-          <button
-            onClick={() => setIsAddAssetOpen(true)}
-            className="flex items-center gap-1.5 rounded-2xl bg-neutral-900 px-4 py-2 text-xs font-bold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 transition-colors shadow-sm self-start md:self-auto"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Cadastrar Ativo</span>
-          </button>
         </div>
 
         {/* Assets vs Liabilities Balance */}
@@ -164,15 +183,15 @@ export const FinanceInvestmentsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Monthly Aporte Status */}
+      {/* Monthly contribution status */}
       <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <div className="flex items-center justify-between mb-3">
           <div>
             <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-              Central de Aportes de Setembro 2026
+              Central de aportes · <span className="capitalize">{monthLabel}</span>
             </h4>
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              Meta do Orçamento Base Zero: {formatBRL(targetAporte)}
+              {targetAporte > 0 ? `Meta do orçamento: ${formatBRL(targetAporte)}` : 'Defina a meta de investimentos no orçamento'}
             </p>
           </div>
           <div className="text-right">
@@ -260,24 +279,17 @@ export const FinanceInvestmentsTab: React.FC = () => {
               <span className="text-[10px] text-neutral-400 uppercase font-bold tracking-wider">
                 Sugestão do Próximo Aporte
               </span>
-              <div className="text-xs font-black text-indigo-700 dark:text-indigo-300">
-                Ações Internacionais (IVVB11)
-              </div>
+              <div className="text-xs font-black text-indigo-700 dark:text-indigo-300">{recommendedAsset?.asset.tickerOrName || 'Cadastre metas por ativo'}</div>
               <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                Sua carteira está com 15% e a meta é 20%. Direcione o próximo aporte de R$ 300 para equilibrar.
+                {recommendedAsset ? `Alocação atual de ${recommendedAsset.current.toFixed(1).replace('.', ',')}% para uma meta de ${recommendedAsset.asset.targetAllocationPercent.toFixed(1).replace('.', ',')}%.` : 'A sugestão aparecerá quando houver ativos com alocação desejada.'}
               </p>
             </div>
           </div>
 
           <button
-            onClick={() => {
-              const ivvb = investments.find((i) => i.tickerOrName.includes('IVVB11')) || investments[0];
-              if (ivvb) {
-                setAporteAssetId(ivvb.id);
-                setAporteAmount('300');
-              }
-            }}
-            className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 transition-colors"
+            disabled={!recommendedAsset}
+            onClick={() => recommendedAsset && setAporteAssetId(recommendedAsset.asset.id)}
+            className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 transition-colors disabled:opacity-40"
           >
             Aportar no Ativo Recomendado
           </button>
@@ -286,13 +298,11 @@ export const FinanceInvestmentsTab: React.FC = () => {
 
       {/* 4. Assets Table */}
       <div className="space-y-4">
-        <h4 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-          Ativos Cadastrados na Carteira ({investments.length})
-        </h4>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">Carteira de ativos ({investments.length})</h4><p className="text-xs text-neutral-500">Posição, rentabilidade, instituição e meta de alocação.</p></div><label className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-900"><Search className="h-4 w-4 text-neutral-400"/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar ativo..." className="w-full bg-transparent py-2.5 text-sm outline-none sm:w-52"/></label></div>
 
         <div className="rounded-3xl border border-neutral-200 bg-white overflow-hidden shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-            {investments.map((asset) => {
+            {filteredInvestments.map((asset) => {
               const profit = asset.currentValue - asset.totalInvested;
               const profitPct = asset.totalInvested > 0 ? (profit / asset.totalInvested) * 100 : 0;
 
@@ -344,13 +354,18 @@ export const FinanceInvestmentsTab: React.FC = () => {
                     >
                       Aportar
                     </button>
+                    <button onClick={() => setEditingAsset({ ...asset })} aria-label={`Editar ${asset.tickerOrName}`} className="rounded-xl border border-neutral-200 p-2 text-neutral-500 hover:text-indigo-500 dark:border-neutral-700"><Pencil className="h-4 w-4"/></button>
+                    <button onClick={() => window.confirm(`Excluir ${asset.tickerOrName} da carteira?`) && deleteInvestmentAsset(asset.id)} aria-label={`Excluir ${asset.tickerOrName}`} className="rounded-xl border border-neutral-200 p-2 text-neutral-500 hover:text-rose-500 dark:border-neutral-700"><Trash2 className="h-4 w-4"/></button>
                   </div>
                 </div>
               );
             })}
+            {!filteredInvestments.length && <div className="p-10 text-center"><BriefcaseBusiness className="mx-auto h-6 w-6 text-neutral-400"/><p className="mt-2 text-sm font-bold">Nenhum ativo encontrado</p><p className="text-xs text-neutral-500">Cadastre seu primeiro ativo ou ajuste a busca.</p></div>}
           </div>
         </div>
       </div>
+
+      {editingAsset && <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm"><form onSubmit={(event) => { event.preventDefault(); updateInvestmentAsset(editingAsset.id, editingAsset); setEditingAsset(null); }} className="w-full max-w-lg space-y-4 rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900"><div className="flex items-center justify-between"><div><h3 className="text-base font-black">Editar ativo</h3><p className="text-xs text-neutral-500">Atualize os valores reais da sua posição.</p></div><button type="button" onClick={() => setEditingAsset(null)}><X className="h-5 w-5"/></button></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold">Nome ou ticker<input required value={editingAsset.tickerOrName} onChange={(e) => setEditingAsset({ ...editingAsset, tickerOrName: e.target.value.toUpperCase() })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label><label className="text-xs font-bold">Instituição<input required value={editingAsset.institution} onChange={(e) => setEditingAsset({ ...editingAsset, institution: e.target.value })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label><label className="text-xs font-bold">Quantidade<input type="number" min="0" step="0.000001" value={editingAsset.quantity} onChange={(e) => setEditingAsset({ ...editingAsset, quantity: Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label><label className="text-xs font-bold">Preço atual<input type="number" min="0" step="0.01" value={editingAsset.currentPrice} onChange={(e) => setEditingAsset({ ...editingAsset, currentPrice: Number(e.target.value), currentValue: editingAsset.quantity * Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label><label className="text-xs font-bold">Valor atual<input type="number" min="0" step="0.01" value={editingAsset.currentValue} onChange={(e) => setEditingAsset({ ...editingAsset, currentValue: Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label><label className="text-xs font-bold">Meta de alocação (%)<input type="number" min="0" max="100" step="0.1" value={editingAsset.targetAllocationPercent} onChange={(e) => setEditingAsset({ ...editingAsset, targetAllocationPercent: Number(e.target.value) })} className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-800"/></label></div><div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingAsset(null)} className="rounded-xl border border-neutral-200 px-4 py-2 text-xs font-bold dark:border-neutral-700">Cancelar</button><button type="submit" className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white">Salvar alterações</button></div></form></div>}
 
       {/* Aporte Modal */}
       {aporteAssetId && (
