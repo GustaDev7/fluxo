@@ -11,6 +11,8 @@ import {
   X,
   ListTodo,
   Sparkles,
+  ShieldCheck,
+  ArrowRight,
 } from 'lucide-react';
 
 export const FinanceGoalsTab: React.FC = () => {
@@ -20,6 +22,9 @@ export const FinanceGoalsTab: React.FC = () => {
     addFinancialGoal,
     contributeToGoal,
     generateTaskForGoal,
+    emergencyFund,
+    emergencyCoverage,
+    setSubTab,
   } = useFinance();
 
   const [isAddGoalOpen, setIsAddGoalOpen] = useState(false);
@@ -71,6 +76,9 @@ export const FinanceGoalsTab: React.FC = () => {
 
   const totalGoalsTarget = goals.reduce((acc, g) => acc + g.targetAmount, 0);
   const totalGoalsAccumulated = goals.reduce((acc, g) => acc + g.currentAmount, 0);
+  const reserveTarget = Math.max(0, emergencyFund.targetAmount || 0);
+  const reserveCurrent = Math.max(0, emergencyFund.currentAmount || 0);
+  const reserveProgress = reserveTarget > 0 ? Math.min(100, Math.round((reserveCurrent / reserveTarget) * 100)) : 0;
 
   return (
     <div className="space-y-6">
@@ -97,6 +105,41 @@ export const FinanceGoalsTab: React.FC = () => {
           <span>Nova Meta</span>
         </button>
       </div>
+
+      {/* Emergency reserve is a protected goal, not a separate finance area. */}
+      <button
+        type="button"
+        onClick={() => setSubTab('emergency')}
+        className="group grid w-full gap-5 rounded-3xl border border-emerald-500/25 bg-gradient-to-br from-emerald-500/10 via-white to-white p-5 text-left shadow-sm transition hover:border-emerald-500/45 dark:via-neutral-900 dark:to-neutral-900 md:grid-cols-[1fr_auto] md:items-center"
+      >
+        <div className="flex min-w-0 items-start gap-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+            <ShieldCheck className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-sm font-black text-neutral-900 dark:text-neutral-100">Reserva de Emergência</h4>
+              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Meta protegida</span>
+            </div>
+            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+              {emergencyCoverage.monthsCovered.toFixed(1).replace('.', ',')} meses de cobertura acumulados
+            </p>
+            <div className="mt-4 flex items-center gap-3">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-200/80 dark:bg-neutral-800">
+                <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${reserveProgress}%` }} />
+              </div>
+              <strong className="text-xs text-neutral-700 dark:text-neutral-200">{reserveProgress}%</strong>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-6 border-t border-emerald-500/15 pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">
+          <div>
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Acumulado / meta</span>
+            <strong className="mt-1 block text-sm text-neutral-900 dark:text-neutral-100">{formatBRL(reserveCurrent)} <span className="font-medium text-neutral-400">/ {formatBRL(reserveTarget)}</span></strong>
+          </div>
+          <ArrowRight className="h-4 w-4 text-emerald-500 transition-transform group-hover:translate-x-1" />
+        </div>
+      </button>
 
       {/* New Goal Modal */}
       {isAddGoalOpen && (
