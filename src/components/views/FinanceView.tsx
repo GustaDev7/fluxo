@@ -63,7 +63,7 @@ export const FinanceView: React.FC = () => {
     <div className="flex-1 overflow-y-auto bg-neutral-50/50 p-4 md:p-6 dark:bg-neutral-950">
       <div className="mx-auto max-w-[1540px] space-y-5">
         {/* Top Header */}
-        {!['goals', 'debts', 'budget'].includes(activeSubTab) && (
+        {!['overview', 'goals', 'debts', 'budget'].includes(activeSubTab) && (
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-neutral-400"><span>Finanças</span><span>›</span><span className="text-neutral-600 dark:text-neutral-300">{currentMeta.title}</span></div>
