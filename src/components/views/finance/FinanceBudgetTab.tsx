@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, CheckCircle2, History, LayoutGrid, Lightbulb, List, Plus, Save, Settings, Sparkles, Table2, Target, Trash2, Wand2 } from 'lucide-react';
+import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, CircleDollarSign, History, LayoutGrid, Lightbulb, List, MoreHorizontal, Plus, Save, Settings, Sparkles, Table2, Target, Trash2, Wand2 } from 'lucide-react';
 import { useFinance } from '../../../context/FinanceContext';
 import { BudgetCategory, BudgetIncomeSource, MasterCategory, ZeroBasedBudget } from '../../../types/finance';
 import { calculateBudget, resolveCategory } from '../../../domain/budgetEngine';
@@ -25,7 +25,7 @@ const newIncome = (name = 'Salário'): BudgetIncomeSource => ({
 });
 
 export const FinanceBudgetTab: React.FC = () => {
-  const { budget, updateBudgetPlan, transactions } = useFinance();
+  const { budget, updateBudgetPlan, transactions, monthlyClosingHistory } = useFinance();
   const [draft, setDraft] = useState<ZeroBasedBudget>(() => ({ ...budget,
     incomeSources: budget.incomeSources?.length ? budget.incomeSources : [newIncome()],
     categories: budget.categories?.length ? budget.categories : initialCategories(budget),
@@ -42,6 +42,17 @@ export const FinanceBudgetTab: React.FC = () => {
     return values;
   }, [transactions, draft.month]);
   const actualTotal = useMemo(() => Object.values(actual).reduce<number>((sum, value) => sum + Number(value), 0), [actual]);
+  const monthlyEvolution = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat('pt-BR', { month: 'short', timeZone: 'UTC' });
+    const rows = monthlyClosingHistory.slice(-11).map((closing) => ({
+      month: closing.month,
+      label: formatter.format(new Date(`${closing.month}-01T00:00:00Z`)).replace('.', ''),
+      planned: closing.totalIncome,
+      actual: closing.totalExpenses + closing.totalInvested + closing.debtsPaid,
+    }));
+    const current = { month: draft.month, label: formatter.format(new Date(`${draft.month}-01T00:00:00Z`)).replace('.', ''), planned: result.totalAllocated, actual: actualTotal };
+    return [...rows.filter((row) => row.month !== draft.month), current].slice(-12);
+  }, [monthlyClosingHistory, draft.month, result.totalAllocated, actualTotal]);
 
   const updateCategory = (id: string, patch: Partial<BudgetCategory>) => setDraft((current) => {
     const income = calculateBudget(current).plannedIncome;
@@ -83,22 +94,22 @@ export const FinanceBudgetTab: React.FC = () => {
     ? `${formatBRL(result.balance)} não alocados` : `${formatBRL(Math.abs(result.balance))} acima da renda`;
 
   return <div className="space-y-5">
-    <section className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 md:p-6">
+    <section>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div><p className="text-xs font-bold uppercase tracking-[.18em] text-indigo-600">Planejamento mensal</p><h2 className="mt-1 text-xl font-black">Orçamento Base Zero</h2><p className="mt-1 text-xs text-neutral-500">O sistema calcula e orienta. Você decide.</p></div>
+        <div><div className="flex flex-wrap items-center gap-2"><h2 className="text-2xl font-black">Orçamento Base Zero</h2><span className="rounded-full bg-indigo-500/10 px-2.5 py-1 text-xs font-bold text-indigo-500">Cada real com seu destino</span></div><p className="mt-1 text-sm text-neutral-500">Planeje e ajuste seu orçamento. A renda prevista deve ser totalmente alocada.</p></div>
         <div className="flex flex-wrap gap-2">
-          <input aria-label="Mês" type="month" value={draft.month} onChange={(e) => setDraft({ ...draft, month: e.target.value })} className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-bold dark:border-neutral-700 dark:bg-neutral-800"/>
-          <button onClick={() => setSuggestion(true)} className="flex items-center gap-2 rounded-xl border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-700 dark:border-indigo-800 dark:text-indigo-300"><Sparkles className="h-4 w-4"/>Padrão AUVP</button>
-          <button onClick={() => editing ? save() : setEditing(true)} className="flex items-center gap-2 rounded-xl bg-neutral-950 px-4 py-2 text-xs font-bold text-white dark:bg-white dark:text-neutral-950">{editing && <Save className="h-4 w-4"/>}{editing ? 'Salvar orçamento' : 'Editar orçamento'}</button>
+          <label className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 dark:border-neutral-700 dark:bg-neutral-900"><CalendarDays className="h-4 w-4 text-neutral-500"/><input aria-label="Mês" type="month" value={draft.month} onChange={(e) => setDraft({ ...draft, month: e.target.value })} className="bg-transparent py-2.5 text-xs font-bold outline-none"/></label>
+          <button onClick={() => editing ? save() : setEditing(true)} className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs font-bold dark:border-neutral-700 dark:bg-neutral-900">{editing ? <Save className="h-4 w-4"/> : <Settings className="h-4 w-4"/>}{editing ? 'Salvar orçamento' : 'Configurações'}</button>
+          <button onClick={() => setSuggestion(true)} className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs font-bold dark:border-neutral-700 dark:bg-neutral-900"><MoreHorizontal className="h-4 w-4"/>Mais opções</button>
         </div>
       </div>
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 2xl:grid-cols-[repeat(3,minmax(0,1fr))_1.15fr]">
         {[
-          ['Renda prevista', formatBRL(result.plannedIncome), 'Base do planejamento'],
-          ['Renda recebida', formatBRL(result.receivedIncome), `Impacto ${formatBRL(result.receivedIncome - result.plannedIncome)}`],
-          ['Total alocado', formatBRL(result.totalAllocated), `${Number(result.percentageAllocated).toFixed(2).replace('.', ',')}% distribuídos`],
-          ['Situação', formatBRL(Math.abs(result.balance)), statusText],
-        ].map(([label, value, detail], index) => <div key={label} className={`rounded-2xl border p-4 ${index === 3 ? result.status === 'balanced' ? 'border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20' : result.status === 'under' ? 'border-amber-200 bg-amber-50 dark:bg-amber-950/20' : 'border-rose-200 bg-rose-50 dark:bg-rose-950/20' : 'border-neutral-100 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-800/40'}`}><span className="text-xs text-neutral-500">{label}</span><div className="mt-1 text-xl font-black">{value}</div><div className="mt-1 flex items-center gap-1 text-[11px] text-neutral-500">{index === 3 && (result.status === 'balanced' ? <CheckCircle2 className="h-3.5 w-3.5"/> : <AlertTriangle className="h-3.5 w-3.5"/>)}{detail}</div></div>)}
+          ['Renda mensal prevista', formatBRL(result.plannedIncome), '100% da renda será alocada', CircleDollarSign, 'text-emerald-500 bg-emerald-500/10'],
+          ['Total alocado', formatBRL(result.totalAllocated), `${Number(result.percentageAllocated).toFixed(2).replace('.', ',')}% da renda distribuída`, BarChart3, 'text-blue-500 bg-blue-500/10'],
+          ['Saldo não alocado', formatBRL(Math.abs(result.balance)), statusText, CheckCircle2, result.status === 'balanced' ? 'text-emerald-500 bg-emerald-500/10' : 'text-amber-500 bg-amber-500/10'],
+        ].map(([label, value, detail, Icon, color]) => { const MetricIcon = Icon as typeof CircleDollarSign; return <div key={label as string} className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"><div className="flex items-start gap-3"><span className={`rounded-xl p-2.5 ${color}`}><MetricIcon className="h-5 w-5"/></span><div><span className="text-xs text-neutral-500">{label as string}</span><strong className="mt-1 block text-xl">{value as string}</strong><span className="text-xs text-neutral-500">{detail as string}</span></div></div></div>; })}
+        <div className={`flex items-start gap-3 rounded-2xl border p-4 ${result.status === 'balanced' ? 'border-emerald-500/40 bg-emerald-500/5' : result.status === 'under' ? 'border-amber-500/40 bg-amber-500/5' : 'border-rose-500/40 bg-rose-500/5'}`}>{result.status === 'balanced' ? <Lightbulb className="h-5 w-5 shrink-0 text-amber-400"/> : <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500"/>}<div><strong className="text-sm">{result.status === 'balanced' ? 'Orçamento equilibrado!' : result.status === 'under' ? 'Ainda há renda para distribuir' : 'Orçamento acima da renda'}</strong><p className="mt-1 text-xs leading-relaxed text-neutral-500">{result.status === 'balanced' ? 'Sua renda está 100% alocada. Continue acompanhando os valores realizados.' : statusText}</p></div></div>
       </div>
     </section>
 
@@ -115,14 +126,14 @@ export const FinanceBudgetTab: React.FC = () => {
     <nav className="flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label="Áreas do orçamento">
       {[
         ['Visão geral', BarChart3], ['Categorias', LayoutGrid], ['Análises', Target],
-        ['Histórico', History], ['Cenários', Wand2], ['Configurações', Settings],
+        ['Histórico', History], ['Cenários', Wand2], ['Metas', Target], ['Configurações', Settings],
       ].map(([label, Icon], index) => <button key={label as string} className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-xs font-bold ${index === 0 ? 'border-indigo-500 text-indigo-500' : 'border-transparent text-neutral-500'}`}><Icon className="h-4 w-4"/>{label as string}</button>)}
     </nav>
 
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
     <section>
-      <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-black">Distribuição</h3><p className="text-xs text-neutral-500">Percentual e valor estão conectados.</p></div><div className="flex rounded-xl border border-neutral-200 p-1 dark:border-neutral-800">{([['cards', LayoutGrid], ['list', List], ['table', Table2]] as const).map(([mode, Icon]) => <button key={mode} aria-label={mode} onClick={() => setDraft({ ...draft, viewMode: mode })} className={`rounded-lg p-2 ${draft.viewMode === mode ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900' : 'text-neutral-400'}`}><Icon className="h-4 w-4"/></button>)}</div></div>
-      <div className={draft.viewMode === 'cards' ? 'grid gap-3 md:grid-cols-2' : 'space-y-2'}>{roots.map((category) => {
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-base font-black">Categorias</h3><p className="text-xs text-neutral-500">Gerencie quanto da renda será destinado a cada área.</p></div><div className="flex items-center gap-2"><div className="flex rounded-xl border border-neutral-200 p-1 dark:border-neutral-800">{([['cards', LayoutGrid], ['list', List], ['table', Table2]] as const).map(([mode, Icon]) => <button key={mode} aria-label={mode} onClick={() => setDraft({ ...draft, viewMode: mode })} className={`rounded-lg p-2 ${draft.viewMode === mode ? 'bg-indigo-600 text-white' : 'text-neutral-400'}`}><Icon className="h-4 w-4"/></button>)}</div><button onClick={() => { setEditing(true); setDraft({ ...draft, categories: [...(draft.categories || []), { id: crypto.randomUUID(), name: 'Nova categoria', color: '#6366f1', allocationMode: 'fixed', percentage: '0', fixedAmount: 0, plannedAmount: 0, priority: roots.length + 1, archived: false }] }); }} className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white"><Plus className="h-4 w-4"/>Nova categoria</button></div></div>
+      <div className={draft.viewMode === 'cards' ? 'grid gap-3 md:grid-cols-2 2xl:grid-cols-3' : 'space-y-2'}>{roots.map((category) => {
         const spent = category.masterCategory ? actual[category.masterCategory] || 0 : 0;
         const remaining = category.plannedAmount - spent;
         const execution = category.plannedAmount > 0 ? spent / category.plannedAmount * 100 : 0;
@@ -134,6 +145,7 @@ export const FinanceBudgetTab: React.FC = () => {
         </article>;
       })}</div>
       {editing && <button onClick={() => setDraft({ ...draft, categories: [...(draft.categories || []), { id: crypto.randomUUID(), name: 'Nova categoria', color: '#6366f1', allocationMode: 'fixed', percentage: '0', fixedAmount: 0, plannedAmount: 0, priority: roots.length + 1, archived: false }] })} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-neutral-300 py-3 text-xs font-bold dark:border-neutral-700"><Plus className="h-4 w-4"/>Nova categoria</button>}
+      <BudgetEvolution rows={monthlyEvolution}/>
     </section>
 
     <aside className="space-y-3 xl:sticky xl:top-4">
@@ -151,11 +163,19 @@ export const FinanceBudgetTab: React.FC = () => {
           <div><div className="flex justify-between text-xs"><span className="text-neutral-500">Realizado</span><b>{formatBRL(actualTotal)}</b></div><div className="mt-2 h-2 rounded-full bg-neutral-100 dark:bg-neutral-800"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${result.totalAllocated > 0 ? Math.min(actualTotal / result.totalAllocated * 100, 100) : 0}%` }}/></div></div>
         </div>
       </section>
-      <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><h3 className="text-sm font-black">Ações rápidas</h3><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => setEditing(true)} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Ajustar valores</button><button onClick={() => setSuggestion(true)} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Equilibrar</button></div></section>
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><h3 className="text-sm font-black">Ações rápidas</h3><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => setEditing(true)} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Ajustar percentuais</button><button onClick={() => setSuggestion(true)} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Equilibrar automaticamente</button><button onClick={() => { setDraft({ ...budget, month: draft.month, incomeSources: budget.incomeSources?.length ? budget.incomeSources : [newIncome()], categories: budget.categories?.length ? budget.categories : initialCategories(budget), viewMode: draft.viewMode }); setEditing(true); }} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Importar orçamento salvo</button><button onClick={save} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Salvar como modelo atual</button></div></section>
       <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900 dark:bg-indigo-950/20"><div className="flex gap-3"><Lightbulb className="h-5 w-5 shrink-0 text-indigo-500"/><div><h3 className="text-sm font-black">Dica do orçamento</h3><p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">Revise suas categorias mensalmente. As sugestões orientam, mas a decisão final é sempre sua.</p></div></div></section>
     </aside>
     </div>
 
     {suggestion && <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"><div className="w-full max-w-md rounded-3xl bg-white p-6 dark:bg-neutral-900"><Sparkles className="h-6 w-6 text-indigo-600"/><h3 className="mt-3 text-lg font-black">Prévia do padrão AUVP</h3><p className="text-sm text-neutral-500">Sugestão personalizável. Nada muda sem confirmação.</p><div className="mt-4 space-y-2">{AUVP.map(([key, pct]) => <div key={key} className="flex justify-between text-sm"><span>{MASTER_CATEGORY_CONFIG[key].name}</span><b>{pct}% · {formatBRL(result.plannedIncome * Number(pct) / 100)}</b></div>)}</div><div className="mt-5 flex gap-2"><button onClick={() => setSuggestion(false)} className="flex-1 rounded-xl border py-2 text-xs font-bold">Cancelar</button><button onClick={applyAuvp} className="flex-1 rounded-xl bg-indigo-600 py-2 text-xs font-bold text-white">Aplicar sugestão</button></div></div></div>}
   </div>;
+};
+
+const BudgetEvolution = ({ rows }: { rows: Array<{ month: string; label: string; planned: number; actual: number }> }) => {
+  const max = Math.max(1, ...rows.flatMap((row) => [row.planned, row.actual]));
+  return <section className="mt-4 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="text-sm font-black">Evolução mensal</h3><p className="mt-1 text-xs text-neutral-500">Planejado e realizado com base nos fechamentos e lançamentos registrados.</p></div><div className="flex gap-4 text-xs"><span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-indigo-500"/>Planejado</span><span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-emerald-400"/>Realizado</span></div></div>
+    {rows.length ? <div className="mt-5 flex h-48 items-end gap-2 overflow-x-auto border-b border-neutral-200 pb-1 dark:border-neutral-800">{rows.map((row) => <div key={row.month} className="flex h-full min-w-12 flex-1 flex-col items-center justify-end"><div className="flex h-[155px] w-full max-w-12 items-end justify-center gap-1"><div className="w-3 rounded-t bg-indigo-500" style={{ height: `${Math.max(2, row.planned / max * 100)}%` }} title={`Planejado: ${formatBRL(row.planned)}`}/><div className="w-3 rounded-t bg-emerald-400" style={{ height: `${Math.max(2, row.actual / max * 100)}%` }} title={`Realizado: ${formatBRL(row.actual)}`}/></div><span className="mt-2 text-[11px] capitalize text-neutral-500">{row.label}</span></div>)}</div> : <p className="py-12 text-center text-sm text-neutral-500">Ainda não há dados mensais para exibir.</p>}
+  </section>;
 };
