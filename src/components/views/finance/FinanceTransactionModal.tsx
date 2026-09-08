@@ -25,6 +25,7 @@ export const FinanceTransactionModal: React.FC = () => {
     isTransactionModalOpen,
     closeTransactionModal,
     transactionModalInitialType,
+    transactionModalInitialCategory,
     addTransaction,
     accounts,
     creditCards,
@@ -58,11 +59,11 @@ export const FinanceTransactionModal: React.FC = () => {
       setDescription('');
       setDate(getTodayDateString());
       setMasterCategory(
-        transactionModalInitialType === 'investment'
+        transactionModalInitialCategory || (transactionModalInitialType === 'investment'
           ? 'liberdade_financeira'
           : transactionModalInitialType === 'income'
           ? 'custos_fixos'
-          : 'custos_fixos'
+          : 'custos_fixos')
       );
       setSubcategory('');
       setAccountId(accounts[0]?.id || '');
@@ -75,7 +76,7 @@ export const FinanceTransactionModal: React.FC = () => {
       setIsInstallment(false);
       setSmartInput('');
     }
-  }, [isTransactionModalOpen, transactionModalInitialType, accounts]);
+  }, [isTransactionModalOpen, transactionModalInitialType, transactionModalInitialCategory, accounts]);
 
   if (!isTransactionModalOpen) return null;
 
