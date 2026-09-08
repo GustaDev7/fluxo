@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { amountFromPercentage, calculateBudget, percentageFromAmount, resolveCategory } from './budgetEngine';
+import { amountFromPercentage, calculateBudget, copyBudgetToMonth, percentageFromAmount, replaceBudgetForMonth, resolveCategory } from './budgetEngine';
 import { BudgetCategory, ZeroBasedBudget } from '../types/finance';
 
 const category = (overrides: Partial<BudgetCategory> = {}): BudgetCategory => ({
@@ -23,4 +23,21 @@ describe('budgetEngine', () => {
     expect(result.plannedIncome).toBe(4600); expect(result.receivedIncome).toBe(4200);
   });
   it('não soma subcategoria duas vezes', () => expect(calculateBudget(budget([category({ id: 'pai', percentage: '50' }), category({ parentId: 'pai', percentage: '20' })])).totalAllocated).toBe(2300));
+  it('mantém a renda recebida isolada por mês', () => {
+    const september = { ...budget([]), month: '2026-09', incomeSources: [{ id: 'sep', name: 'Salário', type: 'salary' as const, plannedAmount: 4600, receivedAmount: 4600, recurring: true }] };
+    const october = { ...budget([]), month: '2026-10', incomeSources: [{ id: 'oct', name: 'Salário + extra', type: 'extra' as const, plannedAmount: 5200, receivedAmount: 5700, recurring: false }] };
+    const months = replaceBudgetForMonth([september], october);
+
+    expect(months.find((item) => item.month === '2026-09')?.incomeSources?.[0].receivedAmount).toBe(4600);
+    expect(months.find((item) => item.month === '2026-10')?.incomeSources?.[0].receivedAmount).toBe(5700);
+  });
+  it('copia um orçamento sem reutilizar identidades ou valores recebidos', () => {
+    const source = { ...budget([category({ id: 'parent' }), category({ id: 'child', parentId: 'parent' })]), id: 'budget-sep', incomeSources: [{ id: 'income-sep', name: 'Salário', type: 'salary' as const, plannedAmount: 4600, receivedAmount: 4600, recurring: true }] };
+    const copy = copyBudgetToMonth(source, '2026-10');
+
+    expect(copy.id).toBeUndefined();
+    expect(copy.incomeSources?.[0].id).not.toBe('income-sep');
+    expect(copy.incomeSources?.[0].receivedAmount).toBe(0);
+    expect(copy.categories?.[1].parentId).toBe(copy.categories?.[0].id);
+  });
 });

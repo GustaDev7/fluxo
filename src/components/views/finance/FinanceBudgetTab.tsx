@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowDownUp, BarChart3, CalendarDays, CheckCircle2, CircleDollarSign, Copy, LayoutGrid, Lightbulb, List, MoreHorizontal, Pencil, Plus, ReceiptText, Save, Search, Settings, Sparkles, Table2, Trash2, X } from 'lucide-react';
 import { useFinance } from '../../../context/FinanceContext';
 import { BudgetCategory, BudgetIncomeSource, CreditCard, FinanceAccount, FinanceTransaction, MasterCategory, ZeroBasedBudget } from '../../../types/finance';
-import { calculateBudget, resolveCategory } from '../../../domain/budgetEngine';
+import { calculateBudget, copyBudgetToMonth, resolveCategory } from '../../../domain/budgetEngine';
 import { MASTER_CATEGORY_CONFIG, formatBRL } from '../../../utils/financeUtils';
 
 const AUVP: Array<[MasterCategory, string]> = [
@@ -24,17 +24,38 @@ const newIncome = (name = 'Salário'): BudgetIncomeSource => ({
   plannedAmount: 0, receivedAmount: 0, recurring: true,
 });
 
+const prepareBudget = (budget: ZeroBasedBudget): ZeroBasedBudget => ({
+  ...budget,
+  incomeSources: budget.incomeSources?.length ? budget.incomeSources : [newIncome()],
+  categories: budget.categories?.length ? budget.categories : initialCategories(budget),
+  viewMode: budget.viewMode || 'cards',
+  advancedMode: budget.advancedMode || false,
+});
+
+const emptyBudgetForMonth = (month: string, viewMode: ZeroBasedBudget['viewMode']): ZeroBasedBudget => prepareBudget({
+  month,
+  plannedIncome: 0,
+  allocations: { custos_fixos: 0, conforto: 0, metas: 0, prazeres: 0, liberdade_financeira: 0, conhecimento: 0 },
+  viewMode,
+});
+
 export const FinanceBudgetTab: React.FC = () => {
-  const { budget, updateBudgetPlan, transactions, monthlyClosingHistory, accounts, creditCards, openTransactionModal, addTransaction, updateTransaction, deleteTransaction } = useFinance();
-  const [draft, setDraft] = useState<ZeroBasedBudget>(() => ({ ...budget,
-    incomeSources: budget.incomeSources?.length ? budget.incomeSources : [newIncome()],
-    categories: budget.categories?.length ? budget.categories : initialCategories(budget),
-    viewMode: budget.viewMode || 'cards', advancedMode: budget.advancedMode || false,
-  }));
+  const { budget, monthlyBudgets, updateBudgetPlan, transactions, monthlyClosingHistory, accounts, creditCards, openTransactionModal, addTransaction, updateTransaction, deleteTransaction } = useFinance();
+  const [draft, setDraft] = useState<ZeroBasedBudget>(() => prepareBudget(budget));
   const [editing, setEditing] = useState(false);
   const [suggestion, setSuggestion] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>();
   const result = useMemo(() => calculateBudget(draft), [draft]);
+
+  useEffect(() => {
+    setDraft(prepareBudget(budget));
+  }, [budget]);
+
+  const selectMonth = (month: string) => {
+    const savedBudget = monthlyBudgets.find((item) => item.month === month);
+    setDraft(savedBudget ? prepareBudget(savedBudget) : emptyBudgetForMonth(month, draft.viewMode));
+    setEditing(false);
+  };
 
   const actual = useMemo(() => {
     const values: Record<string, number> = {};
@@ -99,7 +120,7 @@ export const FinanceBudgetTab: React.FC = () => {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div><div className="flex flex-wrap items-center gap-2"><h2 className="text-2xl font-black">Orçamento Base Zero</h2><span className="rounded-full bg-indigo-500/10 px-2.5 py-1 text-xs font-bold text-indigo-500">Cada real com seu destino</span></div><p className="mt-1 text-sm text-neutral-500">Planeje e ajuste seu orçamento. A renda prevista deve ser totalmente alocada.</p></div>
         <div className="flex flex-wrap gap-2">
-          <label className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 dark:border-neutral-700 dark:bg-neutral-900"><CalendarDays className="h-4 w-4 text-neutral-500"/><input aria-label="Mês" type="month" value={draft.month} onChange={(e) => setDraft({ ...draft, month: e.target.value })} className="bg-transparent py-2.5 text-xs font-bold outline-none"/></label>
+          <label className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 dark:border-neutral-700 dark:bg-neutral-900"><CalendarDays className="h-4 w-4 text-neutral-500"/><input aria-label="Mês" type="month" value={draft.month} onChange={(e) => selectMonth(e.target.value)} className="bg-transparent py-2.5 text-xs font-bold outline-none"/></label>
           <button onClick={() => editing ? save() : setEditing(true)} className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs font-bold dark:border-neutral-700 dark:bg-neutral-900">{editing ? <Save className="h-4 w-4"/> : <Settings className="h-4 w-4"/>}{editing ? 'Salvar orçamento' : 'Configurações'}</button>
           <button onClick={() => setSuggestion(true)} className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs font-bold dark:border-neutral-700 dark:bg-neutral-900"><MoreHorizontal className="h-4 w-4"/>Mais opções</button>
         </div>
@@ -160,7 +181,7 @@ export const FinanceBudgetTab: React.FC = () => {
           <div><div className="flex justify-between text-xs"><span className="text-neutral-500">Realizado</span><b>{formatBRL(actualTotal)}</b></div><div className="mt-2 h-2 rounded-full bg-neutral-100 dark:bg-neutral-800"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${result.totalAllocated > 0 ? Math.min(actualTotal / result.totalAllocated * 100, 100) : 0}%` }}/></div></div>
         </div>
       </section>
-      <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><h3 className="text-sm font-black">Ações rápidas</h3><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => setEditing(true)} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Ajustar percentuais</button><button onClick={() => setSuggestion(true)} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Equilibrar automaticamente</button><button onClick={() => { setDraft({ ...budget, month: draft.month, incomeSources: budget.incomeSources?.length ? budget.incomeSources : [newIncome()], categories: budget.categories?.length ? budget.categories : initialCategories(budget), viewMode: draft.viewMode }); setEditing(true); }} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Importar orçamento salvo</button><button onClick={save} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Salvar como modelo atual</button></div></section>
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><h3 className="text-sm font-black">Ações rápidas</h3><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => setEditing(true)} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Ajustar percentuais</button><button onClick={() => setSuggestion(true)} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Equilibrar automaticamente</button><button onClick={() => { setDraft(prepareBudget(copyBudgetToMonth(budget, draft.month))); setEditing(true); }} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Importar orçamento salvo</button><button onClick={save} className="rounded-xl border border-neutral-200 p-2 text-left text-[11px] font-bold dark:border-neutral-700">Salvar como modelo atual</button></div></section>
       <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900 dark:bg-indigo-950/20"><div className="flex gap-3"><Lightbulb className="h-5 w-5 shrink-0 text-indigo-500"/><div><h3 className="text-sm font-black">Dica do orçamento</h3><p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">Revise suas categorias mensalmente. As sugestões orientam, mas a decisão final é sempre sua.</p></div></div></section>
     </aside>
     </div>

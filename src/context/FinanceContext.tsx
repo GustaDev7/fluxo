@@ -18,7 +18,7 @@ import {
   FinancialHealthScore,
 } from '../types/finance';
 import { generateSchedule } from '../domain/debtEngine';
-import { calculateBudget } from '../domain/budgetEngine';
+import { calculateBudget, copyBudgetToMonth, replaceBudgetForMonth } from '../domain/budgetEngine';
 import { calculateInvestmentContribution, getTransactionImpact, isPositiveMoney, money } from '../domain/financeLedger';
 import {
   INITIAL_ACCOUNTS,
@@ -74,6 +74,7 @@ interface FinanceContextType {
   goals: FinancialGoalItem[];
   investments: InvestmentAssetItem[];
   budget: ZeroBasedBudget;
+  monthlyBudgets: ZeroBasedBudget[];
   zeroBasedBudget: ZeroBasedBudget;
   monthlyClosingHistory: MonthlyClosing[];
   diagnosis: FinancialDiagnosisData;
@@ -195,6 +196,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [investments, setInvestments] = useState<InvestmentAssetItem[]>([]);
 
   const [budget, setBudget] = useState<ZeroBasedBudget>(INITIAL_ZERO_BASED_BUDGET);
+  const [monthlyBudgets, setMonthlyBudgets] = useState<ZeroBasedBudget[]>([]);
 
   const [monthlyClosingHistory, setMonthlyClosingHistory] = useState<MonthlyClosing[]>([]);
 
@@ -224,6 +226,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           setGoals(data.goals as FinancialGoalItem[]);
           setInvestments(data.investments as InvestmentAssetItem[]);
           if (data.budget && Object.keys(data.budget).length) setBudget(data.budget as ZeroBasedBudget);
+          setMonthlyBudgets((data.budgets || (data.budget ? [data.budget] : [])) as ZeroBasedBudget[]);
           setMonthlyClosingHistory(data.closings as MonthlyClosing[]);
           if (data.diagnosis && Object.keys(data.diagnosis).length) setDiagnosis(data.diagnosis as FinancialDiagnosisData);
 
@@ -255,9 +258,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     goals,
     investments,
     budget,
+    budgets: monthlyBudgets,
     closings: monthlyClosingHistory,
     diagnosis,
-  }), [accounts, creditCards, transactions, bills, debts, installments, emergencyFund, goals, investments, budget, monthlyClosingHistory, diagnosis]);
+  }), [accounts, creditCards, transactions, bills, debts, installments, emergencyFund, goals, investments, budget, monthlyBudgets, monthlyClosingHistory, diagnosis]);
 
   // Auto-sync debounced to Supabase.
   useEffect(() => {
@@ -921,20 +925,23 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Zero-Based Budget
   const updateZeroBasedBudget = useCallback(
     (allocations: Partial<ZeroBasedBudget['allocations']>, plannedIncome?: number) => {
-      setBudget((prev) => ({
-        ...prev,
-        plannedIncome: plannedIncome !== undefined ? plannedIncome : prev.plannedIncome,
+      const nextBudget = {
+        ...budget,
+        plannedIncome: plannedIncome !== undefined ? plannedIncome : budget.plannedIncome,
         allocations: {
-          ...prev.allocations,
+          ...budget.allocations,
           ...allocations,
         },
-      }));
+      };
+      setBudget(nextBudget);
+      setMonthlyBudgets((previous) => replaceBudgetForMonth(previous, nextBudget));
     },
-    []
+    [budget]
   );
 
   const updateBudgetPlan = useCallback((nextBudget: ZeroBasedBudget) => {
     setBudget(nextBudget);
+    setMonthlyBudgets((previous) => replaceBudgetForMonth(previous, nextBudget));
   }, []);
 
   // Monthly Closing
@@ -971,19 +978,23 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setDiagnosis(data);
 
       // Automatically calibrate Zero-based budget
-      setBudget((previous) => ({
-        ...previous,
-        month: currentMonthStr,
-        plannedIncome: data.monthlyIncome,
-        allocations: {
-          custos_fixos: data.fixedCosts,
-          conforto: data.comfortCosts,
-          prazeres: data.leisureCosts,
-          metas: Math.round(data.monthlyIncome * 0.12),
-          liberdade_financeira: data.monthlyTargetInvestment,
-          conhecimento: Math.max(0, data.monthlyIncome - (data.fixedCosts + data.comfortCosts + data.leisureCosts + Math.round(data.monthlyIncome * 0.12) + data.monthlyTargetInvestment)),
-        },
-      }));
+      setBudget((previous) => {
+        const monthBudget = previous.month === currentMonthStr ? previous : copyBudgetToMonth(previous, currentMonthStr);
+        const nextBudget = {
+          ...monthBudget,
+          plannedIncome: data.monthlyIncome,
+          allocations: {
+            custos_fixos: data.fixedCosts,
+            conforto: data.comfortCosts,
+            prazeres: data.leisureCosts,
+            metas: Math.round(data.monthlyIncome * 0.12),
+            liberdade_financeira: data.monthlyTargetInvestment,
+            conhecimento: Math.max(0, data.monthlyIncome - (data.fixedCosts + data.comfortCosts + data.leisureCosts + Math.round(data.monthlyIncome * 0.12) + data.monthlyTargetInvestment)),
+          },
+        };
+        setMonthlyBudgets((budgets) => replaceBudgetForMonth(budgets, nextBudget));
+        return nextBudget;
+      });
 
       // Calibrate emergency fund target
       if (data.fixedCosts > 0) {
@@ -1066,6 +1077,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     goals,
     investments,
     budget,
+    monthlyBudgets,
     zeroBasedBudget: budget,
     monthlyClosingHistory,
     diagnosis,

@@ -72,10 +72,24 @@ export function distributeRemainder(categories: BudgetCategory[], income: number
 }
 
 export function copyBudgetToMonth(budget: ZeroBasedBudget, month: string): ZeroBasedBudget {
+  const categoryIds = new Map(
+    (budget.categories ?? []).map((category) => [category.id, crypto.randomUUID()]),
+  );
+
   return {
     ...budget,
+    id: undefined,
     month,
     incomeSources: budget.incomeSources?.map((source) => ({ ...source, id: crypto.randomUUID(), receivedAmount: 0 })),
-    categories: budget.categories?.map((category) => ({ ...category, id: crypto.randomUUID() })),
+    categories: budget.categories?.map((category) => ({
+      ...category,
+      id: categoryIds.get(category.id)!,
+      parentId: category.parentId ? categoryIds.get(category.parentId) : undefined,
+    })),
   };
+}
+
+export function replaceBudgetForMonth(budgets: ZeroBasedBudget[], nextBudget: ZeroBasedBudget): ZeroBasedBudget[] {
+  return [...budgets.filter((budget) => budget.month !== nextBudget.month), nextBudget]
+    .sort((a, b) => b.month.localeCompare(a.month));
 }
