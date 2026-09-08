@@ -63,17 +63,18 @@ export const FinanceView: React.FC = () => {
     <div className="flex-1 overflow-y-auto bg-neutral-50/50 p-4 md:p-6 dark:bg-neutral-950">
       <div className="mx-auto max-w-[1540px] space-y-5">
         {/* Top Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {activeSubTab !== 'goals' && (
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-neutral-400"><span>Finanças</span><span>›</span><span className="text-neutral-600 dark:text-neutral-300">{currentMeta.title}</span></div>
             <h1 className="text-2xl font-black tracking-tight text-neutral-900 dark:text-neutral-100">{currentMeta.title}</h1>
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{currentMeta.description}</p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <button
               onClick={openDiagnosisModal}
-              className="flex items-center gap-1.5 rounded-2xl border border-indigo-200 bg-indigo-50/80 px-3.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300 transition-colors"
+              className="flex items-center justify-center gap-1.5 rounded-2xl border border-indigo-200 bg-indigo-50/80 px-3.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300 transition-colors"
             >
               <Sparkles className="h-4 w-4 text-indigo-500" />
               <span>Diagnóstico</span>
@@ -81,13 +82,13 @@ export const FinanceView: React.FC = () => {
 
             <button
               onClick={() => openTransactionModal('expense')}
-              className="flex items-center gap-1.5 rounded-2xl bg-neutral-900 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white transition-all"
+              className="flex items-center justify-center gap-1.5 rounded-2xl bg-neutral-900 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white transition-all"
             >
               <Plus className="h-4 w-4" />
               <span>Novo Lançamento</span>
             </button>
-            <div className="relative">
-              <button onClick={() => setIsMoreOpen((value) => !value)} className="flex items-center gap-1.5 rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-xs font-bold text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300"><span>Mais</span><ChevronDown className="h-3.5 w-3.5"/></button>
+            <div className="relative col-span-2 sm:col-span-1">
+              <button onClick={() => setIsMoreOpen((value) => !value)} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-xs font-bold text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300"><span>Mais</span><ChevronDown className="h-3.5 w-3.5"/></button>
               {isMoreOpen && <div className="absolute right-0 top-11 z-30 w-52 rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
                 <button onClick={() => { setActiveSubTab('transactions'); setIsMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><ReceiptText className="h-4 w-4"/>Movimentações</button>
                 <button onClick={() => { setActiveSubTab('accounts'); setIsMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><WalletCards className="h-4 w-4"/>Contas e cartões</button>
@@ -96,6 +97,7 @@ export const FinanceView: React.FC = () => {
             </div>
           </div>
         </div>
+        )}
 
         {/* Sub Navigation Tabs */}
         <div className="flex items-center gap-2 overflow-x-auto border-b border-neutral-200/80 dark:border-neutral-800">
