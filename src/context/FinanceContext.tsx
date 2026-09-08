@@ -14,6 +14,7 @@ import {
   FinancialDiagnosisData,
   FinanceSubTab,
   TransactionType,
+  MasterCategory,
   FinancialHealthScore,
 } from '../types/finance';
 import { generateSchedule } from '../domain/debtEngine';
@@ -53,9 +54,10 @@ interface FinanceContextType {
 
   // Modals
   isTransactionModalOpen: boolean;
-  openTransactionModal: (type?: TransactionType) => void;
+  openTransactionModal: (type?: TransactionType, category?: MasterCategory) => void;
   closeTransactionModal: () => void;
   transactionModalInitialType: TransactionType;
+  transactionModalInitialCategory?: MasterCategory;
   isDiagnosisModalOpen: boolean;
   openDiagnosisModal: () => void;
   closeDiagnosisModal: () => void;
@@ -169,6 +171,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Modals state
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [transactionModalInitialType, setTransactionModalInitialType] = useState<TransactionType>('expense');
+  const [transactionModalInitialCategory, setTransactionModalInitialCategory] = useState<MasterCategory>();
   const [isDiagnosisModalOpen, setIsDiagnosisModalOpen] = useState(false);
 
   // Entities with persistence (strictly sanitized from any previous sample data)
@@ -293,8 +296,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [authUser, financeDbPayload]);
 
   // Modals
-  const openTransactionModal = useCallback((type: TransactionType = 'expense') => {
+  const openTransactionModal = useCallback((type: TransactionType = 'expense', category?: MasterCategory) => {
     setTransactionModalInitialType(type);
+    setTransactionModalInitialCategory(category);
     setIsTransactionModalOpen(true);
   }, []);
 
@@ -1047,6 +1051,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     openTransactionModal,
     closeTransactionModal,
     transactionModalInitialType,
+    transactionModalInitialCategory,
     isDiagnosisModalOpen,
     openDiagnosisModal,
     closeDiagnosisModal,
