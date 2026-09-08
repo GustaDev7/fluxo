@@ -1,396 +1,128 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useFinance } from '../../../context/FinanceContext';
 import { formatBRL } from '../../../utils/financeUtils';
-import { FinancialGoalItem } from '../../../types/finance';
+import { FinanceTransaction, FinancialGoalItem } from '../../../types/finance';
 import {
-  Target,
-  Plus,
-  Calendar,
-  CheckCircle2,
-  TrendingUp,
-  X,
-  ListTodo,
-  Sparkles,
-  ShieldCheck,
-  ArrowRight,
+  AlertTriangle, BarChart3, CalendarDays, CheckCircle2, ChevronDown, CircleDollarSign,
+  Clock3, Edit3, Filter, History, Lightbulb, ListChecks, Plus, Search, Settings2,
+  ShieldCheck, Sparkles, Target, Trash2, TrendingUp, WalletCards, X,
 } from 'lucide-react';
 
-export const FinanceGoalsTab: React.FC = () => {
-  const {
-    goals,
-    accounts,
-    addFinancialGoal,
-    contributeToGoal,
-    generateTaskForGoal,
-    emergencyFund,
-    emergencyCoverage,
-    setSubTab,
-  } = useFinance();
+type Status = 'active' | 'completed' | 'risk' | 'no-deadline';
+type Tab = 'overview' | 'contributions' | 'evolution' | 'simulator' | 'settings' | 'history';
+type Goal = FinancialGoalItem & { isEmergency?: boolean };
 
-  const [isAddGoalOpen, setIsAddGoalOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newTargetAmount, setNewTargetAmount] = useState('');
-  const [newCurrentAmount, setNewCurrentAmount] = useState('0');
-  const [newDeadline, setNewDeadline] = useState('2027-12-31');
-  const [newMonthlyContribution, setNewMonthlyContribution] = useState('');
-  const [newColor, setNewColor] = useState('#3B82F6');
-
-  // Modal contribute to goal
-  const [contributeGoalId, setContributeGoalId] = useState<string | null>(null);
-  const [contributeAmount, setContributeAmount] = useState('');
-  const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || '');
-
-  const handleCreateGoal = (e: React.FormEvent) => {
-    e.preventDefault();
-    const targetNum = parseFloat(newTargetAmount.replace(',', '.')) || 0;
-    const currentNum = parseFloat(newCurrentAmount.replace(',', '.')) || 0;
-    const monthlyNum = parseFloat(newMonthlyContribution.replace(',', '.')) || 0;
-
-    if (!newTitle || !targetNum) return;
-
-    addFinancialGoal({
-      title: newTitle,
-      targetAmount: targetNum,
-      currentAmount: currentNum,
-      deadline: newDeadline,
-      monthlyContribution: monthlyNum,
-      masterCategory: 'metas',
-      color: newColor,
-    });
-
-    setIsAddGoalOpen(false);
-    setNewTitle('');
-    setNewTargetAmount('');
-    setNewMonthlyContribution('');
-  };
-
-  const handleContribute = (e: React.FormEvent) => {
-    e.preventDefault();
-    const amountVal = parseFloat(contributeAmount.replace(',', '.')) || 0;
-    if (!contributeGoalId || !amountVal) return;
-
-    contributeToGoal(contributeGoalId, amountVal, selectedAccountId);
-    setContributeGoalId(null);
-    setContributeAmount('');
-  };
-
-  const totalGoalsTarget = goals.reduce((acc, g) => acc + g.targetAmount, 0);
-  const totalGoalsAccumulated = goals.reduce((acc, g) => acc + g.currentAmount, 0);
-  const reserveTarget = Math.max(0, emergencyFund.targetAmount || 0);
-  const reserveCurrent = Math.max(0, emergencyFund.currentAmount || 0);
-  const reserveProgress = reserveTarget > 0 ? Math.min(100, Math.round((reserveCurrent / reserveTarget) * 100)) : 0;
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-            Metas Financeiras Conectadas
-          </h3>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            Acumulado:{' '}
-            <strong className="text-emerald-600 dark:text-emerald-400">
-              {formatBRL(totalGoalsAccumulated)}
-            </strong>{' '}
-            de {formatBRL(totalGoalsTarget)}
-          </p>
-        </div>
-
-        <button
-          onClick={() => setIsAddGoalOpen(true)}
-          className="flex items-center gap-1.5 rounded-2xl bg-neutral-900 px-4 py-2 text-xs font-bold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 transition-colors shadow-sm self-start sm:self-auto"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Nova Meta</span>
-        </button>
-      </div>
-
-      {/* Emergency reserve is a protected goal, not a separate finance area. */}
-      <button
-        type="button"
-        onClick={() => setSubTab('emergency')}
-        className="group grid w-full gap-5 rounded-3xl border border-emerald-500/25 bg-gradient-to-br from-emerald-500/10 via-white to-white p-5 text-left shadow-sm transition hover:border-emerald-500/45 dark:via-neutral-900 dark:to-neutral-900 md:grid-cols-[1fr_auto] md:items-center"
-      >
-        <div className="flex min-w-0 items-start gap-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-            <ShieldCheck className="h-5 w-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="text-sm font-black text-neutral-900 dark:text-neutral-100">Reserva de Emergência</h4>
-              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Meta protegida</span>
-            </div>
-            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-              {emergencyCoverage.monthsCovered.toFixed(1).replace('.', ',')} meses de cobertura acumulados
-            </p>
-            <div className="mt-4 flex items-center gap-3">
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-200/80 dark:bg-neutral-800">
-                <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${reserveProgress}%` }} />
-              </div>
-              <strong className="text-xs text-neutral-700 dark:text-neutral-200">{reserveProgress}%</strong>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-6 border-t border-emerald-500/15 pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">
-          <div>
-            <span className="block text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Acumulado / meta</span>
-            <strong className="mt-1 block text-sm text-neutral-900 dark:text-neutral-100">{formatBRL(reserveCurrent)} <span className="font-medium text-neutral-400">/ {formatBRL(reserveTarget)}</span></strong>
-          </div>
-          <ArrowRight className="h-4 w-4 text-emerald-500 transition-transform group-hover:translate-x-1" />
-        </div>
-      </button>
-
-      {/* New Goal Modal */}
-      {isAddGoalOpen && (
-        <form
-          onSubmit={handleCreateGoal}
-          className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 space-y-4 animate-in fade-in"
-        >
-          <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
-            <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-              Cadastrar Meta Financeira
-            </span>
-            <button
-              type="button"
-              onClick={() => setIsAddGoalOpen(false)}
-              className="text-neutral-400 hover:text-neutral-600"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div>
-              <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
-                Título da Meta
-              </label>
-              <input
-                type="text"
-                required
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="Ex: Carro Próprio, Viagem..."
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
-                Valor Total Alvo (R$)
-              </label>
-              <input
-                type="text"
-                required
-                value={newTargetAmount}
-                onChange={(e) => setNewTargetAmount(e.target.value)}
-                placeholder="0,00"
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
-                Aporte Mensal Alvo (R$)
-              </label>
-              <input
-                type="text"
-                value={newMonthlyContribution}
-                onChange={(e) => setNewMonthlyContribution(e.target.value)}
-                placeholder="0,00"
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
-                Prazo Estimado
-              </label>
-              <input
-                type="date"
-                value={newDeadline}
-                onChange={(e) => setNewDeadline(e.target.value)}
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setIsAddGoalOpen(false)}
-              className="rounded-xl border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="rounded-xl bg-amber-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-amber-700"
-            >
-              Salvar Meta
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Contribute Modal */}
-      {contributeGoalId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <form
-            onSubmit={handleContribute}
-            className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 space-y-4 animate-in fade-in"
-          >
-            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
-              <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                Aporte em Meta Financeira
-              </span>
-              <button
-                type="button"
-                onClick={() => setContributeGoalId(null)}
-                className="text-neutral-400 hover:text-neutral-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
-                Valor do Aporte (R$)
-              </label>
-              <input
-                type="text"
-                required
-                value={contributeAmount}
-                onChange={(e) => setContributeAmount(e.target.value)}
-                placeholder="0,00"
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-base font-bold text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-neutral-600 dark:text-neutral-400 block mb-1">
-                Debitar da Conta
-              </label>
-              <select
-                value={selectedAccountId}
-                onChange={(e) => setSelectedAccountId(e.target.value)}
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-              >
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} (R$ {a.balance.toFixed(2)})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setContributeGoalId(null)}
-                className="rounded-xl border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                className="rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
-              >
-                Confirmar Aporte
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Goals Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {goals.map((goal) => {
-          const progress = Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100));
-          const remaining = Math.max(0, goal.targetAmount - goal.currentAmount);
-
-          return (
-            <div
-              key={goal.id}
-              className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className="flex h-9 w-9 items-center justify-center rounded-xl text-white font-bold text-xs shadow-sm"
-                      style={{ backgroundColor: goal.color }}
-                    >
-                      <Target className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                        {goal.title}
-                      </h4>
-                      <p className="text-[10px] text-neutral-400">
-                        Prazo: {goal.deadline}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Numbers */}
-                <div className="grid grid-cols-2 gap-2 bg-neutral-50 dark:bg-neutral-800/40 p-3 rounded-2xl mb-4">
-                  <div>
-                    <span className="text-[10px] text-neutral-400 block">Acumulado</span>
-                    <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
-                      {formatBRL(goal.currentAmount)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-neutral-400 block">Meta Final</span>
-                    <span className="text-sm font-black text-neutral-900 dark:text-neutral-100">
-                      {formatBRL(goal.targetAmount)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Progress bar */}
-                <div className="space-y-1.5 mb-4">
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-neutral-500">Concluído</span>
-                    <span className="font-bold text-neutral-800 dark:text-neutral-200">{progress}%</span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{ width: `${progress}%`, backgroundColor: goal.color }}
-                    />
-                  </div>
-                </div>
-
-                <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  Aporte recomendado: <strong>{formatBRL(goal.monthlyContribution)}/mês</strong>
-                </div>
-              </div>
-
-              {/* Action buttons */}
-              <div className="mt-4 pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-2">
-                <button
-                  onClick={() => generateTaskForGoal(goal)}
-                  title="Criar tarefa mensal de aporte no Fluxo"
-                  className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
-                >
-                  <ListTodo className="h-3.5 w-3.5" />
-                  <span>Gerar Tarefa</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setContributeGoalId(goal.id);
-                    setContributeAmount(goal.monthlyContribution.toString());
-                  }}
-                  className="rounded-xl bg-neutral-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 transition-colors shadow-sm"
-                >
-                  Aportar
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+const money = (value: string) => {
+  const parsed = Number(value.trim().replace(/\s/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
 };
+const dateLabel = (date: string) => date ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`)) : 'Sem prazo';
+const daysUntil = (date: string) => date ? Math.ceil((new Date(`${date}T00:00:00`).getTime() - new Date().setHours(0, 0, 0, 0)) / 86400000) : null;
+const progressOf = (goal: Goal) => goal.targetAmount > 0 ? Math.min(100, Math.max(0, goal.currentAmount / goal.targetAmount * 100)) : 0;
+const statusOf = (goal: Goal): Status => {
+  if (progressOf(goal) >= 100) return 'completed';
+  if (!goal.deadline) return 'no-deadline';
+  const months = Math.max((daysUntil(goal.deadline) || 0) / 30.4375, 0.01);
+  return goal.monthlyContribution + 0.005 < Math.max(0, goal.targetAmount - goal.currentAmount) / months ? 'risk' : 'active';
+};
+const statusMeta: Record<Status, { label: string; className: string }> = {
+  active: { label: 'Em andamento', className: 'bg-emerald-500/15 text-emerald-500' },
+  completed: { label: 'Concluída', className: 'bg-emerald-500/15 text-emerald-500' },
+  risk: { label: 'Em risco', className: 'bg-rose-500/15 text-rose-500' },
+  'no-deadline': { label: 'Sem prazo', className: 'bg-neutral-500/15 text-neutral-400' },
+};
+
+export const FinanceGoalsTab: React.FC = () => {
+  const finance = useFinance();
+  const emergency = useMemo<Goal>(() => ({
+    id: '__emergency__', title: 'Reserva de Emergência',
+    targetAmount: finance.emergencyFund.targetAmount || finance.recommendedEmergencyTarget || 0,
+    currentAmount: finance.emergencyFund.currentAmount,
+    monthlyContribution: finance.emergencyFund.monthlyContribution,
+    deadline: '', masterCategory: 'metas', color: '#22c55e', isEmergency: true,
+    notes: `Reserva para cobrir ${finance.emergencyFund.targetMonths || 6} meses das despesas essenciais.`,
+  }), [finance.emergencyFund, finance.recommendedEmergencyTarget]);
+  const allGoals = useMemo<Goal[]>(() => [emergency, ...finance.goals], [emergency, finance.goals]);
+  const [selectedId, setSelectedId] = useState('__emergency__');
+  const [tab, setTab] = useState<Tab>('overview');
+  const [filter, setFilter] = useState<'all' | Status>('all');
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<'recent' | 'deadline' | 'progress'>('recent');
+  const [suggestion, setSuggestion] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [contributionOpen, setContributionOpen] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [accountId, setAccountId] = useState(finance.accounts[0]?.id || '');
+  const [simulation, setSimulation] = useState('');
+  const [form, setForm] = useState({ title: '', target: '', current: '0', monthly: '', deadline: '', color: '#3B82F6', notes: '' });
+
+  const selected = allGoals.find((goal) => goal.id === selectedId) || allGoals[0];
+  const counts = useMemo(() => ({ all: allGoals.length, active: allGoals.filter(g => statusOf(g) === 'active').length, completed: allGoals.filter(g => statusOf(g) === 'completed').length, risk: allGoals.filter(g => statusOf(g) === 'risk').length, noDeadline: allGoals.filter(g => statusOf(g) === 'no-deadline').length }), [allGoals]);
+  const filtered = useMemo(() => allGoals.filter(g => filter === 'all' || statusOf(g) === filter).filter(g => `${g.title} ${g.notes || ''}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === 'deadline' ? (a.deadline || '9999').localeCompare(b.deadline || '9999') : sort === 'progress' ? progressOf(b) - progressOf(a) : allGoals.indexOf(a) - allGoals.indexOf(b)), [allGoals, filter, query, sort]);
+  const totalTarget = allGoals.reduce((sum, g) => sum + Math.max(0, g.targetAmount), 0);
+  const totalCurrent = allGoals.reduce((sum, g) => sum + Math.max(0, g.currentAmount), 0);
+  const progress = progressOf(selected);
+  const remaining = Math.max(0, selected.targetAmount - selected.currentAmount);
+  const days = daysUntil(selected.deadline);
+  const monthsLeft = days === null ? null : Math.max(days / 30.4375, 0);
+  const requiredMonthly = monthsLeft === null || remaining === 0 ? 0 : remaining / Math.max(monthsLeft, 1);
+  const projectedMonths = selected.monthlyContribution > 0 ? Math.ceil(remaining / selected.monthlyContribution) : null;
+  const projectedDate = projectedMonths === null ? null : new Date(new Date().getFullYear(), new Date().getMonth() + projectedMonths, 1);
+  const goalTransactions = finance.transactions.filter(tx => selected.isEmergency ? tx.tags?.includes('reserva') : tx.goalId === selected.id).sort((a, b) => b.date.localeCompare(a.date));
+  const simulatedMonths = money(simulation) > 0 ? Math.ceil(remaining / money(simulation)) : null;
+
+  const openNew = () => { setEditingId(null); setForm({ title: '', target: '', current: '0', monthly: '', deadline: '', color: '#3B82F6', notes: '' }); setFormOpen(true); };
+  const openEdit = () => {
+    if (selected.isEmergency) return finance.openEmergencyConfigModal();
+    setEditingId(selected.id); setForm({ title: selected.title, target: String(selected.targetAmount), current: String(selected.currentAmount), monthly: String(selected.monthlyContribution), deadline: selected.deadline, color: selected.color, notes: selected.notes || '' }); setFormOpen(true);
+  };
+  const saveGoal = (event: React.FormEvent) => {
+    event.preventDefault(); const targetAmount = Math.max(0, money(form.target)); if (!form.title.trim() || targetAmount <= 0) return;
+    const payload = { title: form.title.trim(), targetAmount, currentAmount: Math.max(0, money(form.current)), monthlyContribution: Math.max(0, money(form.monthly)), deadline: form.deadline, masterCategory: 'metas' as const, color: form.color, notes: form.notes.trim() || undefined };
+    if (editingId) finance.updateFinancialGoal(editingId, payload); else finance.addFinancialGoal(payload); setFormOpen(false);
+  };
+  const contribute = () => { if (selected.isEmergency) return finance.openEmergencyDepositModal(); setAmount(selected.monthlyContribution > 0 ? String(selected.monthlyContribution) : ''); setContributionOpen(true); };
+  const saveContribution = (event: React.FormEvent) => { event.preventDefault(); const value = Math.max(0, money(amount)); if (value > 0 && accountId) { finance.contributeToGoal(selected.id, value, accountId); setContributionOpen(false); setAmount(''); } };
+  const suggest = () => { const risky = allGoals.filter(g => statusOf(g) === 'risk').sort((a, b) => (b.targetAmount - b.currentAmount) - (a.targetAmount - a.currentAmount)); setSuggestion(risky.length ? `Priorize “${risky[0].title}”: o aporte planejado está abaixo do necessário para o prazo atual.` : 'Suas metas com prazo estão em ritmo compatível. Mantenha os aportes planejados.'); };
+
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'overview', label: 'Visão Geral', icon: <Target /> }, { id: 'contributions', label: 'Aportes', icon: <WalletCards /> },
+    { id: 'evolution', label: 'Evolução', icon: <TrendingUp /> }, { id: 'simulator', label: 'Simulador', icon: <BarChart3 /> },
+    { id: 'settings', label: 'Configurações', icon: <Settings2 /> }, { id: 'history', label: 'Histórico', icon: <History /> },
+  ];
+
+  return <div className="space-y-4">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-black">Metas Financeiras</h2><p className="mt-1 text-sm text-neutral-500">Planeje, acompanhe e alcance seus objetivos.</p></div><div className="flex gap-2"><button onClick={suggest} className="flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-4 py-2.5 text-sm font-bold text-indigo-500"><Sparkles className="h-4 w-4" />Sugestões da IA</button><button onClick={openNew} className="flex items-center gap-2 rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-bold text-white dark:bg-white dark:text-neutral-950"><Plus className="h-4 w-4" />Nova Meta</button></div></div>
+    {suggestion && <div className="flex justify-between rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-4 text-sm text-indigo-700 dark:text-indigo-300"><span className="flex gap-2"><Lightbulb className="h-4 w-4 shrink-0" />{suggestion}</span><button onClick={() => setSuggestion('')}><X className="h-4 w-4" /></button></div>}
+
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{[
+      ['Total de metas', String(counts.all), `${counts.active} em andamento`, ListChecks, 'text-indigo-500 bg-indigo-500/10'],
+      ['Valor dos objetivos', formatBRL(totalTarget), 'Soma de todas as metas', Target, 'text-rose-500 bg-rose-500/10'],
+      ['Valor acumulado', formatBRL(totalCurrent), totalTarget ? `${(totalCurrent / totalTarget * 100).toFixed(1).replace('.', ',')}% do total` : '0% do total', BarChart3, 'text-blue-500 bg-blue-500/10'],
+      ['Metas em dia', String(counts.active + counts.completed), counts.all ? `${((counts.active + counts.completed) / counts.all * 100).toFixed(1).replace('.', ',')}% das metas` : '0%', CheckCircle2, 'text-emerald-500 bg-emerald-500/10'],
+      ['Metas em risco', String(counts.risk), counts.all ? `${(counts.risk / counts.all * 100).toFixed(1).replace('.', ',')}% das metas` : '0%', AlertTriangle, 'text-orange-500 bg-orange-500/10'],
+    ].map(([label, value, detail, Icon, color]) => { const CardIcon = Icon as typeof Target; return <div key={String(label)} className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"><div className="flex gap-3"><span className={`rounded-xl p-2.5 ${color}`}><CardIcon className="h-4 w-4" /></span><div className="min-w-0"><span className="text-xs text-neutral-500">{label as string}</span><strong className="mt-1 block truncate text-lg">{value as string}</strong><span className="text-xs text-neutral-500">{detail as string}</span></div></div></div>; })}</div>
+
+    <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div className="flex flex-wrap gap-1">{([['all', 'Todas', counts.all], ['active', 'Em andamento', counts.active], ['completed', 'Concluídas', counts.completed], ['risk', 'Em risco', counts.risk], ['no-deadline', 'Sem prazo', counts.noDeadline]] as const).map(([id, label, count]) => <button key={id} onClick={() => setFilter(id)} className={`rounded-xl px-3 py-2 text-xs font-bold ${filter === id ? 'border border-indigo-500/60 bg-indigo-500/10 text-indigo-500' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900'}`}>{label} ({count})</button>)}</div><div className="flex flex-col gap-2 sm:flex-row"><label className="flex min-w-56 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-900"><Search className="h-4 w-4 text-neutral-500" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar metas..." className="w-full bg-transparent py-2.5 text-sm outline-none" /></label><button className="flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold dark:border-neutral-800 dark:bg-neutral-900"><Filter className="h-4 w-4" />Filtrar</button><label className="flex items-center rounded-xl border border-neutral-200 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-900"><select value={sort} onChange={e => setSort(e.target.value as typeof sort)} className="bg-transparent py-2.5 text-sm font-semibold outline-none"><option value="recent">Mais recentes</option><option value="deadline">Prazo</option><option value="progress">Progresso</option></select><ChevronDown className="h-4 w-4" /></label></div></div>
+
+    <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]"><div className="space-y-3 xl:max-h-[850px] xl:overflow-y-auto xl:pr-1">{filtered.map(goal => <div key={goal.id}><GoalCard goal={goal} selected={selected.id === goal.id} onClick={() => { setSelectedId(goal.id); setTab('overview'); }} /></div>)}{!filtered.length && <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-neutral-500">Nenhuma meta encontrada.</div>}</div>
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
+        <header className="flex flex-col gap-4 border-b border-neutral-200 p-5 dark:border-neutral-800 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-full text-white" style={{ backgroundColor: selected.color }}>{selected.isEmergency ? <ShieldCheck /> : <Target />}</span><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-xl font-black">{selected.title}</h3><StatusBadge goal={selected} /></div><p className="mt-1 text-sm text-neutral-500">{selected.notes || 'Objetivo financeiro'}</p></div></div><div className="flex gap-2"><button onClick={openEdit} className="flex items-center gap-2 rounded-xl border border-neutral-200 px-3 py-2 text-sm font-bold dark:border-neutral-800"><Edit3 className="h-4 w-4" />Editar meta</button>{!selected.isEmergency && <button onClick={() => { finance.deleteFinancialGoal(selected.id); setSelectedId('__emergency__'); }} className="rounded-xl border border-neutral-200 p-2 text-neutral-500 hover:text-rose-500 dark:border-neutral-800"><Trash2 className="h-4 w-4" /></button>}</div></header>
+        <nav className="flex overflow-x-auto border-b border-neutral-200 px-2 dark:border-neutral-800">{tabs.map(item => <button key={item.id} onClick={() => setTab(item.id)} className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-3 text-xs font-bold [&_svg]:h-3.5 [&_svg]:w-3.5 ${tab === item.id ? 'border-indigo-500 text-indigo-500' : 'border-transparent text-neutral-500'}`}>{item.icon}{item.label}</button>)}</nav>
+        <div className="p-4">{tab === 'overview' && <Overview goal={selected} progress={progress} remaining={remaining} days={days} requiredMonthly={requiredMonthly} projectedDate={projectedDate} transactions={goalTransactions} onContribute={contribute} onTask={() => !selected.isEmergency && finance.generateTaskForGoal(selected)} />}{(tab === 'contributions' || tab === 'history') && <TransactionList transactions={goalTransactions} />}{tab === 'evolution' && <EvolutionChart goal={selected} transactions={goalTransactions} large />}{tab === 'simulator' && <div className="mx-auto max-w-xl space-y-5 py-8"><h4 className="text-lg font-black">Simular novo aporte mensal</h4><p className="text-sm text-neutral-500">Veja o prazo estimado sem alterar sua meta.</p><Field label="Aporte mensal simulado" value={simulation} onChange={setSimulation} /><div className="grid gap-3 sm:grid-cols-2"><Metric label="Tempo estimado" value={simulatedMonths === null ? '—' : `${simulatedMonths} meses`} /><Metric label="Total que falta" value={formatBRL(remaining)} /></div></div>}{tab === 'settings' && <div className="py-12 text-center"><Settings2 className="mx-auto h-10 w-10 text-neutral-500" /><h4 className="mt-3 text-lg font-black">Configurações da meta</h4><p className="mt-1 text-sm text-neutral-500">Edite objetivo, prazo e aporte planejado.</p><button onClick={openEdit} className="mt-5 rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white dark:bg-white dark:text-neutral-950">Editar meta</button></div>}</div>
+      </section></div>
+
+    {formOpen && <Modal title={editingId ? 'Editar meta' : 'Nova meta financeira'} onClose={() => setFormOpen(false)}><form onSubmit={saveGoal}><div className="grid gap-4 sm:grid-cols-2"><Field label="Nome da meta" value={form.title} onChange={title => setForm({ ...form, title })} required /><Field label="Objetivo (R$)" value={form.target} onChange={target => setForm({ ...form, target })} required /><Field label="Valor atual (R$)" value={form.current} onChange={current => setForm({ ...form, current })} /><Field label="Aporte mensal (R$)" value={form.monthly} onChange={monthly => setForm({ ...form, monthly })} /><Field label="Prazo" value={form.deadline} onChange={deadline => setForm({ ...form, deadline })} type="date" /><label><span className="mb-1.5 block text-sm font-bold">Cor</span><input type="color" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} className="h-11 w-full rounded-xl border p-1 dark:border-neutral-700" /></label><label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-bold">Descrição</span><textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="min-h-24 w-full rounded-xl border bg-transparent p-3 dark:border-neutral-700" /></label></div><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setFormOpen(false)} className="rounded-xl border px-4 py-2 text-sm font-bold dark:border-neutral-700">Cancelar</button><button className="rounded-xl bg-indigo-600 px-5 py-2 text-sm font-bold text-white">Salvar meta</button></div></form></Modal>}
+    {contributionOpen && <Modal title="Registrar aporte" onClose={() => setContributionOpen(false)}><form onSubmit={saveContribution} className="space-y-4"><Field label="Valor do aporte (R$)" value={amount} onChange={setAmount} required /><label><span className="mb-1.5 block text-sm font-bold">Debitar da conta</span><select value={accountId} onChange={e => setAccountId(e.target.value)} className="w-full rounded-xl border bg-transparent p-3 dark:border-neutral-700"><option value="">Selecione uma conta</option>{finance.accounts.map(account => <option key={account.id} value={account.id}>{account.name} · {formatBRL(account.balance)}</option>)}</select></label><button disabled={!finance.accounts.length} className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white disabled:opacity-40">Confirmar aporte</button></form></Modal>}
+  </div>;
+};
+
+const StatusBadge = ({ goal }: { goal: Goal }) => { const meta = statusMeta[statusOf(goal)]; return <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${meta.className}`}>{meta.label}</span>; };
+const GoalCard = ({ goal, selected, onClick }: { goal: Goal; selected: boolean; onClick: () => void }) => { const progress = progressOf(goal); return <button onClick={onClick} className={`w-full rounded-2xl border bg-white p-4 text-left dark:bg-neutral-900 ${selected ? 'border-blue-500 ring-1 ring-blue-500/30' : 'border-neutral-200 hover:border-neutral-400 dark:border-neutral-800'}`}><div className="flex gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white" style={{ backgroundColor: goal.color }}>{goal.isEmergency ? <ShieldCheck className="h-5 w-5" /> : <Target className="h-5 w-5" />}</span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><strong className="block truncate text-sm">{goal.title}</strong><span className="line-clamp-1 text-xs text-neutral-500">{goal.notes || 'Objetivo financeiro'}</span></div><StatusBadge goal={goal} /></div></div></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800"><div className="h-full rounded-full" style={{ width: `${progress}%`, backgroundColor: goal.color }} /></div><div className="mt-2 flex justify-between text-sm"><span><strong>{formatBRL(goal.currentAmount)}</strong><span className="text-neutral-500"> / {formatBRL(goal.targetAmount)}</span></span><strong>{progress.toFixed(1).replace('.', ',')}%</strong></div><div className="mt-3 flex justify-between text-xs text-neutral-500"><span className="flex gap-1"><CalendarDays className="h-3.5 w-3.5" />{dateLabel(goal.deadline)}</span><span className="flex gap-1"><WalletCards className="h-3.5 w-3.5" />{formatBRL(goal.monthlyContribution)}/mês</span></div></button>; };
+const Metric = ({ label, value, progress }: { label: string; value: string; progress?: number }) => <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900"><span className="text-xs text-neutral-500">{label}</span><strong className="mt-1 block text-lg">{value}</strong>{progress !== undefined && <div className="mt-2 h-2 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${progress}%` }} /></div>}</div>;
+const Overview = ({ goal, progress, remaining, days, requiredMonthly, projectedDate, transactions, onContribute, onTask }: { goal: Goal; progress: number; remaining: number; days: number | null; requiredMonthly: number; projectedDate: Date | null; transactions: FinanceTransaction[]; onContribute: () => void; onTask: () => void }) => <div className="space-y-4"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Objetivo" value={formatBRL(goal.targetAmount)} /><Metric label="Valor atual" value={formatBRL(goal.currentAmount)} /><Metric label="Falta" value={formatBRL(remaining)} /><Metric label="Progresso" value={`${progress.toFixed(1).replace('.', ',')}%`} progress={progress} /></div><div className="grid gap-4 lg:grid-cols-[.9fr_1.1fr]"><div className="rounded-xl border bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900"><div className="space-y-4 text-sm">{[[CalendarDays, 'Prazo', goal.deadline ? `${dateLabel(goal.deadline)} · ${Math.max(0, days || 0)} dias` : 'Sem prazo'], [WalletCards, 'Aporte planejado', `${formatBRL(goal.monthlyContribution)} / mês`], [CircleDollarSign, 'Aporte necessário', goal.deadline ? `${formatBRL(requiredMonthly)} / mês` : 'Defina um prazo'], [Clock3, 'Ritmo atual', goal.monthlyContribution ? `${formatBRL(goal.monthlyContribution)} / mês` : 'Sem aporte'], [TrendingUp, 'Projeção atual', projectedDate ? new Intl.DateTimeFormat('pt-BR', { month: '2-digit', year: 'numeric' }).format(projectedDate) : 'Sem projeção']].map(([Icon, label, value]) => { const RowIcon = Icon as typeof Target; return <div key={String(label)} className="grid grid-cols-[20px_1fr_auto] gap-2"><RowIcon className="h-4 w-4 text-neutral-500" /><span className="text-neutral-500">{label as string}</span><strong className="text-right">{value as string}</strong></div>; })}</div></div><div className="rounded-xl border bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900"><h4 className="text-sm font-bold">Composição do valor atual</h4><div className="mt-4 flex flex-col items-center gap-5 sm:flex-row"><div className="relative h-36 w-36 shrink-0 rounded-full" style={{ background: goal.currentAmount > 0 ? 'conic-gradient(#34d399 0 100%)' : 'conic-gradient(#262626 0 100%)' }}><div className="absolute inset-5 flex flex-col items-center justify-center rounded-full bg-white dark:bg-neutral-900"><strong>{formatBRL(goal.currentAmount)}</strong><span className="text-xs text-neutral-500">Total</span></div></div><div className="w-full space-y-3 text-sm"><div className="flex justify-between"><span>Aportes registrados</span><strong>{formatBRL(goal.currentAmount)}</strong></div><div className="flex justify-between"><span>Rendimentos informados</span><strong>{formatBRL(0)}</strong></div><p className="rounded-lg bg-blue-500/10 p-3 text-xs text-blue-600 dark:text-blue-300">Rendimentos separados ainda não foram informados.</p></div></div></div></div><EvolutionChart goal={goal} transactions={transactions} /><div className="grid gap-3 md:grid-cols-2"><div className="flex items-center justify-between rounded-xl border p-4 dark:border-neutral-800"><div><span className="text-xs text-neutral-500">Próximo aporte</span><strong className="block text-lg">{formatBRL(goal.monthlyContribution)}</strong></div><button onClick={onContribute} className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-bold text-white dark:bg-white dark:text-neutral-950">Registrar aporte</button></div><div className="rounded-xl border p-4 dark:border-neutral-800"><span className="text-xs text-neutral-500">Ações rápidas</span><div className="mt-2 flex gap-2"><button onClick={onContribute} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">Aportar</button>{!goal.isEmergency && <button onClick={onTask} className="rounded-xl border px-4 py-2 text-sm font-bold dark:border-neutral-700">Gerar tarefa</button>}</div></div></div></div>;
+const TransactionList = ({ transactions }: { transactions: FinanceTransaction[] }) => transactions.length ? <div className="space-y-2">{transactions.map(tx => <div key={tx.id} className="flex justify-between rounded-xl border p-4 dark:border-neutral-800"><div><strong className="block text-sm">{tx.description}</strong><span className="text-xs text-neutral-500">{dateLabel(tx.date)}</span></div><strong className="text-emerald-500">+ {formatBRL(tx.amount)}</strong></div>)}</div> : <div className="py-16 text-center"><History className="mx-auto h-9 w-9 text-neutral-500" /><p className="mt-3 text-sm text-neutral-500">Ainda não há aportes registrados.</p></div>;
+const EvolutionChart = ({ goal, transactions, large = false }: { goal: Goal; transactions: FinanceTransaction[]; large?: boolean }) => { const ordered = [...transactions].sort((a, b) => a.date.localeCompare(b.date)); const values = ordered.reduce<{ date: string; value: number }[]>((list, tx) => { list.push({ date: tx.date, value: (list.at(-1)?.value || 0) + Math.max(0, tx.amount) }); return list; }, []); if (!values.length && goal.currentAmount > 0) values.push({ date: new Date().toISOString().slice(0, 10), value: goal.currentAmount }); const max = Math.max(goal.targetAmount, ...values.map(v => v.value), 1); const x = (i: number) => values.length === 1 ? 92 : 40 + i / (values.length - 1) * 760; const y = (v: number) => 230 - v / max * 175; return <div className="rounded-xl border bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900"><div className="flex justify-between"><div><h4 className="text-sm font-bold">Evolução da Meta</h4><p className="text-xs text-neutral-500">Aportes registrados e objetivo</p></div><span className="text-xs text-neutral-500">Histórico real</span></div><svg viewBox="0 0 840 260" className={`mt-3 w-full ${large ? 'h-[380px]' : 'h-52'}`} role="img" aria-label="Evolução da meta">{[55, 100, 145, 190, 230].map(v => <line key={v} x1="40" x2="800" y1={v} y2={v} stroke="currentColor" className="text-neutral-300 dark:text-neutral-800" />)}<line x1="40" x2="800" y1={y(goal.targetAmount)} y2={y(goal.targetAmount)} stroke="#a3a3a3" strokeDasharray="6 6" /><polyline points={values.map((v, i) => `${x(i)},${y(v.value)}`).join(' ') || '40,230'} fill="none" stroke="#34d399" strokeWidth="4" />{values.map((v, i) => <circle key={`${v.date}-${i}`} cx={x(i)} cy={y(v.value)} r="4" fill="#34d399"><title>{dateLabel(v.date)} · {formatBRL(v.value)}</title></circle>)}<text x="42" y={Math.max(14, y(goal.targetAmount) - 8)} fill="currentColor" fontSize="12">Objetivo: {formatBRL(goal.targetAmount)}</text></svg></div>; };
+const Field = ({ label, value, onChange, type = 'text', required = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) => <label><span className="mb-1.5 block text-sm font-bold">{label}</span><input type={type} required={required} value={value} onChange={e => onChange(e.target.value)} className="w-full rounded-xl border bg-transparent p-3 outline-none focus:border-indigo-500 dark:border-neutral-700" /></label>;
+const Modal = ({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"><div className="w-full max-w-2xl rounded-2xl border bg-white p-5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900"><div className="mb-5 flex justify-between"><h3 className="text-lg font-black">{title}</h3><button onClick={onClose}><X className="h-5 w-5" /></button></div>{children}</div></div>;
