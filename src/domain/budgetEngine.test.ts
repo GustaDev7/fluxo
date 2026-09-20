@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { amountFromPercentage, calculateBudget, copyBudgetToMonth, percentageFromAmount, replaceBudgetForMonth, resolveCategory } from './budgetEngine';
-import { BudgetCategory, ZeroBasedBudget } from '../types/finance';
+import { amountFromPercentage, budgetCategoryTag, calculateBudget, copyBudgetToMonth, percentageFromAmount, replaceBudgetForMonth, resolveCategory, transactionMatchesBudgetCategory } from './budgetEngine';
+import { BudgetCategory, FinanceTransaction, ZeroBasedBudget } from '../types/finance';
 
 const category = (overrides: Partial<BudgetCategory> = {}): BudgetCategory => ({
   id: crypto.randomUUID(), name: 'Teste', color: '#6366f1', allocationMode: 'percentage',
@@ -39,5 +39,25 @@ describe('budgetEngine', () => {
     expect(copy.incomeSources?.[0].id).not.toBe('income-sep');
     expect(copy.incomeSources?.[0].receivedAmount).toBe(0);
     expect(copy.categories?.[1].parentId).toBe(copy.categories?.[0].id);
+  });
+  it('vincula despesas a uma categoria personalizada sem misturar com a categoria padrão', () => {
+    const custom = category({ id: 'dizimos', masterCategory: undefined });
+    const standard = category({ id: 'fixos', masterCategory: 'custos_fixos' });
+    const taggedExpense: FinanceTransaction = {
+      id: 'tx-custom', type: 'expense', amount: 100, date: '2026-09-20', description: 'Dízimo',
+      masterCategory: 'custos_fixos', tags: [budgetCategoryTag(custom.id)],
+    };
+
+    expect(transactionMatchesBudgetCategory(taggedExpense, custom)).toBe(true);
+    expect(transactionMatchesBudgetCategory(taggedExpense, standard)).toBe(false);
+  });
+  it('mantém despesas comuns na categoria padrão', () => {
+    const standard = category({ id: 'fixos', masterCategory: 'custos_fixos' });
+    const expense: FinanceTransaction = {
+      id: 'tx-standard', type: 'expense', amount: 100, date: '2026-09-20', description: 'Internet',
+      masterCategory: 'custos_fixos',
+    };
+
+    expect(transactionMatchesBudgetCategory(expense, standard)).toBe(true);
   });
 });

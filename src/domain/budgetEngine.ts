@@ -1,9 +1,27 @@
 import Decimal from 'decimal.js';
-import { BudgetCategory, BudgetIncomeSource, ZeroBasedBudget } from '../types/finance';
+import { BudgetCategory, BudgetIncomeSource, FinanceTransaction, ZeroBasedBudget } from '../types/finance';
 
 Decimal.set({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 const D = (value: Decimal.Value | undefined) => new Decimal(value ?? 0);
 const money = (value: Decimal.Value) => D(value).toDecimalPlaces(2).toNumber();
+
+export const BUDGET_CATEGORY_TAG_PREFIX = 'budget-category:';
+
+export const budgetCategoryTag = (categoryId: string): string =>
+  `${BUDGET_CATEGORY_TAG_PREFIX}${categoryId}`;
+
+export function transactionMatchesBudgetCategory(
+  transaction: FinanceTransaction,
+  category: BudgetCategory,
+): boolean {
+  const linkedCategoryTag = transaction.tags?.find((tag) => tag.startsWith(BUDGET_CATEGORY_TAG_PREFIX));
+
+  if (!category.masterCategory) {
+    return linkedCategoryTag === budgetCategoryTag(category.id);
+  }
+
+  return !linkedCategoryTag && transaction.masterCategory === category.masterCategory;
+}
 
 export const percentageFromAmount = (amount: Decimal.Value, income: Decimal.Value): string =>
   D(income).isZero() ? '0' : D(amount).div(income).mul(100).toDecimalPlaces(12).toString();

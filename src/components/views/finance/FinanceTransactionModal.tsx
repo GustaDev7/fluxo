@@ -3,6 +3,7 @@ import { useFinance } from '../../../context/FinanceContext';
 import { TransactionType, MasterCategory } from '../../../types/finance';
 import { MASTER_CATEGORY_CONFIG, smartParseTransaction } from '../../../utils/financeUtils';
 import { getTodayDateString } from '../../../utils/date';
+import { budgetCategoryTag } from '../../../domain/budgetEngine';
 import {
   X,
   Plus,
@@ -24,6 +25,9 @@ export const FinanceTransactionModal: React.FC = () => {
     closeTransactionModal,
     transactionModalInitialType,
     transactionModalInitialCategory,
+    transactionModalBudgetCategoryId,
+    transactionModalBudgetCategoryName,
+    transactionModalInitialDate,
     addTransaction,
     accounts,
     creditCards,
@@ -53,7 +57,7 @@ export const FinanceTransactionModal: React.FC = () => {
       setType(transactionModalInitialType);
       setAmount('');
       setDescription('');
-      setDate(getTodayDateString());
+      setDate(transactionModalInitialDate || getTodayDateString());
       setMasterCategory(
         transactionModalInitialCategory || (transactionModalInitialType === 'investment'
           ? 'liberdade_financeira'
@@ -71,7 +75,7 @@ export const FinanceTransactionModal: React.FC = () => {
       setIsInstallment(false);
       setSmartInput('');
     }
-  }, [isTransactionModalOpen, transactionModalInitialType, transactionModalInitialCategory, accounts]);
+  }, [isTransactionModalOpen, transactionModalInitialType, transactionModalInitialCategory, transactionModalInitialDate, accounts]);
 
   if (!isTransactionModalOpen) return null;
 
@@ -102,6 +106,7 @@ export const FinanceTransactionModal: React.FC = () => {
       cardId: cardId || undefined,
       goalId: goalId || undefined,
       recurrence: recurrence !== 'none' ? recurrence : undefined,
+      tags: transactionModalBudgetCategoryId ? [budgetCategoryTag(transactionModalBudgetCategoryId)] : undefined,
       notes: notes.trim() || undefined,
       installments:
         isInstallment && cardId
@@ -141,6 +146,11 @@ export const FinanceTransactionModal: React.FC = () => {
 
         {/* Scrollable form body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+          {transactionModalBudgetCategoryName && (
+            <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200">
+              Este gasto será vinculado ao orçamento <b>{transactionModalBudgetCategoryName}</b>.
+            </div>
+          )}
           {/* Smart Quick Capture Pill */}
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 dark:border-indigo-950/60 dark:bg-indigo-950/20">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1.5">

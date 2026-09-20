@@ -54,10 +54,17 @@ interface FinanceContextType {
 
   // Modals
   isTransactionModalOpen: boolean;
-  openTransactionModal: (type?: TransactionType, category?: MasterCategory) => void;
+  openTransactionModal: (type?: TransactionType, category?: MasterCategory, options?: {
+    budgetCategoryId?: string;
+    budgetCategoryName?: string;
+    date?: string;
+  }) => void;
   closeTransactionModal: () => void;
   transactionModalInitialType: TransactionType;
   transactionModalInitialCategory?: MasterCategory;
+  transactionModalBudgetCategoryId?: string;
+  transactionModalBudgetCategoryName?: string;
+  transactionModalInitialDate?: string;
   isDiagnosisModalOpen: boolean;
   openDiagnosisModal: () => void;
   closeDiagnosisModal: () => void;
@@ -171,6 +178,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [transactionModalInitialType, setTransactionModalInitialType] = useState<TransactionType>('expense');
   const [transactionModalInitialCategory, setTransactionModalInitialCategory] = useState<MasterCategory>();
+  const [transactionModalBudgetCategoryId, setTransactionModalBudgetCategoryId] = useState<string>();
+  const [transactionModalBudgetCategoryName, setTransactionModalBudgetCategoryName] = useState<string>();
+  const [transactionModalInitialDate, setTransactionModalInitialDate] = useState<string>();
   const [isDiagnosisModalOpen, setIsDiagnosisModalOpen] = useState(false);
 
   // Entities with persistence (strictly sanitized from any previous sample data)
@@ -313,9 +323,16 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [authUser, financeDbPayload, isHydratedFromDb]);
 
   // Modals
-  const openTransactionModal = useCallback((type: TransactionType = 'expense', category?: MasterCategory) => {
+  const openTransactionModal = useCallback((type: TransactionType = 'expense', category?: MasterCategory, options?: {
+    budgetCategoryId?: string;
+    budgetCategoryName?: string;
+    date?: string;
+  }) => {
     setTransactionModalInitialType(type);
     setTransactionModalInitialCategory(category);
+    setTransactionModalBudgetCategoryId(options?.budgetCategoryId);
+    setTransactionModalBudgetCategoryName(options?.budgetCategoryName);
+    setTransactionModalInitialDate(options?.date);
     setIsTransactionModalOpen(true);
   }, []);
 
@@ -1010,6 +1027,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     closeTransactionModal,
     transactionModalInitialType,
     transactionModalInitialCategory,
+    transactionModalBudgetCategoryId,
+    transactionModalBudgetCategoryName,
+    transactionModalInitialDate,
     isDiagnosisModalOpen,
     openDiagnosisModal,
     closeDiagnosisModal,
