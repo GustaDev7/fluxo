@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { useFinance } from '../../context/FinanceContext';
 import { FinanceOverviewTab } from './finance/FinanceOverviewTab';
 import { FinanceTransactionModal } from './finance/FinanceTransactionModal';
@@ -8,7 +8,6 @@ import { EmergencyDepositModal } from './finance/EmergencyDepositModal';
 import {
   PieChart,
   DollarSign,
-  ReceiptText,
   CalendarClock,
   ShieldAlert,
   Target,
@@ -16,13 +15,10 @@ import {
   Plus,
   Sparkles,
   ChevronDown,
-  WalletCards,
 } from 'lucide-react';
 import { FinanceSubTab } from '../../types/finance';
 
 const FinanceBudgetTab = lazy(() => import('./finance/FinanceBudgetTab').then((module) => ({ default: module.FinanceBudgetTab })));
-const FinanceTransactionsTab = lazy(() => import('./finance/FinanceTransactionsTab').then((module) => ({ default: module.FinanceTransactionsTab })));
-const FinanceAccountsTab = lazy(() => import('./finance/FinanceAccountsTab').then((module) => ({ default: module.FinanceAccountsTab })));
 const FinanceBillsTab = lazy(() => import('./finance/FinanceBillsTab').then((module) => ({ default: module.FinanceBillsTab })));
 const FinanceDebtsTab = lazy(() => import('./finance/FinanceDebtsTab').then((module) => ({ default: module.FinanceDebtsTab })));
 const FinanceEmergencyTab = lazy(() => import('./finance/FinanceEmergencyTab').then((module) => ({ default: module.FinanceEmergencyTab })));
@@ -39,11 +35,13 @@ export const FinanceView: React.FC = () => {
   } = useFinance();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
 
+  useEffect(() => {
+    if (activeSubTab === 'transactions' || activeSubTab === 'accounts') setActiveSubTab('overview');
+  }, [activeSubTab, setActiveSubTab]);
+
   const navItems: { id: FinanceSubTab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'Visão Geral', icon: <PieChart className="h-4 w-4" /> },
     { id: 'budget', label: 'Orçamento', icon: <DollarSign className="h-4 w-4" /> },
-    { id: 'transactions', label: 'Movimentações', icon: <ReceiptText className="h-4 w-4" /> },
-    { id: 'accounts', label: 'Contas e cartões', icon: <WalletCards className="h-4 w-4" /> },
     { id: 'bills', label: 'Compromissos', icon: <CalendarClock className="h-4 w-4" />, badge: overdueBills.length || undefined },
     { id: 'goals', label: 'Metas', icon: <Target className="h-4 w-4" /> },
     { id: 'debts', label: 'Dívidas', icon: <ShieldAlert className="h-4 w-4" /> },
@@ -56,8 +54,6 @@ export const FinanceView: React.FC = () => {
     goals: { title: 'Metas', description: 'Direcione recursos para sua reserva e seus objetivos financeiros.' },
     debts: { title: 'Dívidas', description: 'Acompanhe obrigações e planeje a melhor estratégia de quitação.' },
     investments: { title: 'Investimentos', description: 'Acompanhe aportes, rendimentos e construção patrimonial.' },
-    transactions: { title: 'Movimentações', description: 'Histórico único de entradas, saídas, aportes e transferências.' },
-    accounts: { title: 'Contas e cartões', description: 'Instrumentos financeiros conectados ao seu fluxo de caixa.' },
     bills: { title: 'Compromissos', description: 'Vencimentos e obrigações financeiras do período.' },
     emergency: { title: 'Reserva de Emergência', description: 'Configuração detalhada da sua meta de segurança.' },
   };
@@ -94,8 +90,6 @@ export const FinanceView: React.FC = () => {
             <div className="relative col-span-2 sm:col-span-1">
               <button onClick={() => setIsMoreOpen((value) => !value)} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-xs font-bold text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300"><span>Mais</span><ChevronDown className="h-3.5 w-3.5"/></button>
               {isMoreOpen && <div className="absolute right-0 top-11 z-30 w-52 rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
-                <button onClick={() => { setActiveSubTab('transactions'); setIsMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><ReceiptText className="h-4 w-4"/>Movimentações</button>
-                <button onClick={() => { setActiveSubTab('accounts'); setIsMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><WalletCards className="h-4 w-4"/>Contas e cartões</button>
                 <button onClick={() => { setActiveSubTab('bills'); setIsMoreOpen(false); }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><span className="flex items-center gap-2"><CalendarClock className="h-4 w-4"/>Compromissos</span>{overdueBills.length > 0 && <b className="rounded-full bg-rose-600 px-1.5 text-[10px] text-white">{overdueBills.length}</b>}</button>
               </div>}
             </div>
@@ -135,8 +129,6 @@ export const FinanceView: React.FC = () => {
           {activeSubTab === 'overview' && <FinanceOverviewTab />}
           {activeSubTab === 'emergency' && <FinanceEmergencyTab />}
           {activeSubTab === 'budget' && <FinanceBudgetTab />}
-          {activeSubTab === 'transactions' && <FinanceTransactionsTab />}
-          {activeSubTab === 'accounts' && <FinanceAccountsTab />}
           {activeSubTab === 'bills' && <FinanceBillsTab />}
           {activeSubTab === 'debts' && <FinanceDebtsTab />}
           {activeSubTab === 'goals' && <FinanceGoalsTab />}
@@ -155,7 +147,7 @@ export const FinanceView: React.FC = () => {
         {navItems.slice(0, 5).map((item) => {
           const active = activeSubTab === item.id;
           return <button key={item.id} onClick={() => setActiveSubTab(item.id)} className={`relative flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[10px] font-bold ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-500'}`}>
-            {item.icon}<span className="max-w-full truncate">{item.id === 'accounts' ? 'Contas' : item.id === 'transactions' ? 'Lançamentos' : item.label}</span>
+            {item.icon}<span className="max-w-full truncate">{item.label}</span>
             {item.badge ? <span className="absolute right-3 top-2 rounded-full bg-rose-600 px-1.5 text-[9px] text-white">{item.badge}</span> : null}
           </button>;
         })}

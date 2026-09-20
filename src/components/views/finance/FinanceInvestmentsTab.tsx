@@ -15,10 +15,6 @@ import {
   Pencil,
   Search,
   Trash2,
-  ChevronDown,
-  MoreHorizontal,
-  ReceiptText,
-  WalletCards,
 } from 'lucide-react';
 
 type AssetFormMode = 'patrimony' | 'investment';
@@ -34,7 +30,6 @@ export const FinanceInvestmentsTab: React.FC = () => {
     updateInvestmentAsset,
     deleteInvestmentAsset,
     recordAporte,
-    setSubTab,
   } = useFinance();
 
   const [assetFormMode, setAssetFormMode] = useState<AssetFormMode | null>(null);
@@ -46,7 +41,6 @@ export const FinanceInvestmentsTab: React.FC = () => {
   const [targetAlloc, setTargetAlloc] = useState('15');
   const [search, setSearch] = useState('');
   const [editingAsset, setEditingAsset] = useState<InvestmentAssetItem | null>(null);
-  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -176,14 +170,7 @@ export const FinanceInvestmentsTab: React.FC = () => {
           <button onClick={() => openAssetForm('patrimony')} className="flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-xs font-bold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"><BriefcaseBusiness className="h-4 w-4"/>Adicionar patrimônio</button>
           <button onClick={() => openAssetForm('investment')} className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3.5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700"><Plus className="h-4 w-4"/>Novo investimento</button>
           <button onClick={() => openAporteForm()} className="flex items-center justify-center gap-2 rounded-xl border border-indigo-500/40 px-3.5 py-2.5 text-xs font-bold text-indigo-500 hover:bg-indigo-500/5"><TrendingUp className="h-4 w-4"/>Registrar aporte</button>
-          <div className="relative">
-            <button onClick={() => setIsMoreOpen((open) => !open)} aria-expanded={isMoreOpen} className="flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-xs font-bold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"><MoreHorizontal className="h-4 w-4"/><span>Mais</span><ChevronDown className="h-3.5 w-3.5"/></button>
-            {isMoreOpen && <div className="absolute right-0 top-12 z-30 w-56 rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
-              <button onClick={() => { setSubTab('transactions'); setIsMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><ReceiptText className="h-4 w-4"/>Ver movimentações</button>
-              <button onClick={() => { setSubTab('accounts'); setIsMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><WalletCards className="h-4 w-4"/>Gerenciar contas</button>
-              <button onClick={() => { setIsMoreOpen(false); searchInputRef.current?.focus(); searchInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><Search className="h-4 w-4"/>Buscar na carteira</button>
-            </div>}
-          </div>
+          <button onClick={() => { searchInputRef.current?.focus(); searchInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-xs font-bold text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"><Search className="h-4 w-4"/>Buscar</button>
         </div>
       </div>
 
@@ -204,7 +191,7 @@ export const FinanceInvestmentsTab: React.FC = () => {
           <div>
             <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">Resumo patrimonial</h3>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              Contas, carteira, dívidas e faturas consolidadas.
+              Bens, investimentos e dívidas consolidados.
             </p>
           </div>
         </div>
@@ -216,7 +203,7 @@ export const FinanceInvestmentsTab: React.FC = () => {
             <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
               {formatBRL(netWorthSummary.totalAssets)}
             </div>
-            <span className="text-[10px] text-neutral-400">Contas ({formatBRL(netWorthSummary.accountsTotal)}) + Carteira</span>
+            <span className="text-[10px] text-neutral-400">Outros ativos ({formatBRL(netWorthSummary.accountsTotal)}) + Carteira</span>
           </div>
 
           <div className="rounded-2xl bg-neutral-50 p-4 dark:bg-neutral-800/40">
@@ -510,7 +497,7 @@ export const FinanceInvestmentsTab: React.FC = () => {
                   </option>
                 ))}
               </select>
-              {!accounts.length && <div className="mt-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Você ainda não tem uma conta de origem. <button type="button" onClick={() => { setIsAporteOpen(false); setSubTab('accounts'); }} className="font-bold underline">Cadastrar conta</button></div>}
+              {!accounts.length && <div className="mt-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">É necessária uma conta de origem previamente cadastrada para registrar o aporte.</div>}
             </div>
 
             <div className="flex justify-end gap-2 pt-2">

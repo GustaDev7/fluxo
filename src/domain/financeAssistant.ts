@@ -170,7 +170,7 @@ export function answerFinanceQuestion(question: string, snapshot: FinanceAssista
     const account = snapshot.accounts.find((item) => item.id === action.transaction.accountId);
     return {
       content: `Preparei uma ${kind} de **${currency.format(action.transaction.amount)}** como **${action.transaction.description}**${account ? ` na conta **${account.name}**` : ''}. Confira antes de registrar.`,
-      metadata: { action, suggestions: ['Quanto ainda posso gastar?', 'Ver meus lançamentos'] },
+      metadata: { action, suggestions: ['Quanto ainda posso gastar?', 'Ver meu orçamento'] },
     };
   }
 
@@ -181,7 +181,7 @@ export function answerFinanceQuestion(question: string, snapshot: FinanceAssista
   if (/como comeco|como organizar|por onde comecar/.test(text)) {
     return {
       content: 'Comece por três passos: **1)** cadastre suas contas e saldos; **2)** informe a renda do mês no orçamento; **3)** registre cada entrada e saída. A partir daí eu consigo mostrar vazamentos, limites seguros e prioridades.',
-      metadata: { route: 'accounts', routeLabel: 'Cadastrar contas', suggestions: ['Abrir meu orçamento', 'Como registrar um gasto?'] },
+      metadata: { route: 'budget', routeLabel: 'Abrir orçamento', suggestions: ['Abrir meu orçamento', 'Como registrar um gasto?'] },
     };
   }
 
@@ -199,13 +199,13 @@ export function answerFinanceQuestion(question: string, snapshot: FinanceAssista
     const direction = expenseDelta > 0 ? 'aumentaram' : expenseDelta < 0 ? 'diminuíram' : 'ficaram iguais';
     return {
       content: `Comparando **${monthLabel(first)}** com **${monthLabel(second)}**: as despesas ${direction} em **${currency.format(Math.abs(expenseDelta))}**. O saldo passou de **${currency.format(a.balance)}** para **${currency.format(b.balance)}**.`,
-      metadata: { route: 'transactions', routeLabel: 'Ver movimentações', suggestions: ['Onde estou gastando mais?', 'Quanto entrou neste mês?'] },
+      metadata: { route: 'budget', routeLabel: 'Ver orçamento', suggestions: ['Onde estou gastando mais?', 'Quanto entrou neste mês?'] },
     };
   }
 
   if (/onde.*gast|para onde|maior gasto|categoria|vazamento/.test(text)) {
     const categories = topExpenseCategories(snapshot);
-    if (!categories.length) return { content: 'Ainda não há despesas registradas neste mês. Registre seus gastos para eu identificar para onde o salário está indo.', metadata: { suggestions: ['Registrar gasto de R$ 50 no mercado'], route: 'transactions', routeLabel: 'Abrir lançamentos' } };
+    if (!categories.length) return { content: 'Ainda não há despesas registradas neste mês. Registre seus gastos para eu identificar para onde o salário está indo.', metadata: { suggestions: ['Registrar gasto de R$ 50 no mercado'], route: 'budget', routeLabel: 'Abrir orçamento' } };
     const details = categories.slice(0, 3).map(([category, amount], index) => `${index + 1}. **${categoryNames[category]}:** ${currency.format(amount)}`).join('\n');
     return { content: `Estas são as categorias que mais consumiram dinheiro neste mês:\n\n${details}`, metadata: { route: 'budget', routeLabel: 'Ajustar orçamento', suggestions: ['Quanto ainda posso gastar?', 'Compare com o mês anterior'] } };
   }

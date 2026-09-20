@@ -216,12 +216,6 @@ export const FinanceAssistant: React.FC<FinanceAssistantProps> = ({ isOpen, onCl
   const confirmTransaction = async (message: FinanceAssistantMessage) => {
     const action = message.metadata?.action;
     if (!action || action.status !== 'pending') return;
-    if (!action.transaction.accountId) {
-      await appendAssistantMessage('Cadastre uma conta ativa antes de confirmar o lançamento. Abri a área de contas para você.');
-      openFinanceArea('accounts');
-      return;
-    }
-
     setProcessingActionId(message.id);
     try {
       finance.addTransaction({
@@ -230,7 +224,7 @@ export const FinanceAssistant: React.FC<FinanceAssistantProps> = ({ isOpen, onCl
         tags: ['fluxo-ia'],
       });
       await updateActionStatus(message, 'confirmed');
-      await appendAssistantMessage(`Pronto. Registrei **${action.transaction.description}** no valor de **${assistantFormatting.currency.format(action.transaction.amount)}**.`, ['Quanto ainda posso gastar?', 'Ver meus lançamentos']);
+      await appendAssistantMessage(`Pronto. Registrei **${action.transaction.description}** no valor de **${assistantFormatting.currency.format(action.transaction.amount)}**.`, ['Quanto ainda posso gastar?', 'Ver meu orçamento']);
     } catch (error) {
       console.error('Could not confirm Fluxo IA transaction:', error);
       await appendAssistantMessage('Não consegui registrar esse lançamento. Revise a conta selecionada e tente novamente.');
