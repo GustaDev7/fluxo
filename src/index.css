@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+@layer components {
+  .field-input {
+    @apply w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-base font-normal text-neutral-900 outline-none transition-colors focus:border-indigo-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100;
+  }
+}

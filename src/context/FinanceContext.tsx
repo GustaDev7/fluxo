@@ -703,8 +703,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const debt = debts.find((d) => d.id === debtId);
       if (!debt) return;
       const nextInstallment = debt.schedule?.find((item) => item.status === 'pending' || item.status === 'overdue' || item.status === 'partial');
-      const principalPaid = nextInstallment?.principalDue ?? Math.min(debt.currentBalance, debt.installmentAmount);
-      const paymentAmount = nextInstallment?.scheduledAmount ?? debt.installmentAmount;
+      const paymentAmount = Math.min(debt.currentBalance, debt.installmentAmount);
+      const principalPaid = paymentAmount;
       const newRemaining = Math.max(0, debt.remainingInstallments - 1);
       const newBalance = Math.max(0, debt.currentBalance - principalPaid);
       const isPaid = newRemaining === 0 || newBalance === 0;
@@ -731,8 +731,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         payments: [...(debt.payments || []), {
           id: paymentId, installmentId: nextInstallment?.id, accountId, transactionId,
           amount: paymentAmount, principalAmount: principalPaid,
-          interestAmount: nextInstallment?.interestDue || 0, fineAmount: nextInstallment?.fineDue || 0,
-          chargesAmount: nextInstallment?.chargesDue || 0, paidOn: getTodayDateString(), status: 'completed',
+          interestAmount: 0, fineAmount: 0,
+          chargesAmount: 0, paidOn: getTodayDateString(), status: 'completed',
           idempotencyKey: `installment:${nextInstallment?.id || debtId}:${newRemaining}`,
         }],
       });
