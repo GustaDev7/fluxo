@@ -20,9 +20,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    let mounted = true;
+    const timeout = setTimeout(() => { if (mounted) setIsLoading(false); }, 15000);
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return;
+      if (error) throw error;
       setSession(data.session);
       setIsLoading(false);
+    }).catch((error) => {
+      console.error('Fluxo session load failed:', error);
+      if (mounted) setIsLoading(false);
+    }).finally(() => {
+      clearTimeout(timeout);
     });
 
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
@@ -30,7 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(false);
     });
 
-    return () => data.subscription.unsubscribe();
+    return () => { mounted = false; clearTimeout(timeout); data.subscription.unsubscribe(); };
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({

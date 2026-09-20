@@ -1,14 +1,6 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { useFinance } from '../../context/FinanceContext';
 import { FinanceOverviewTab } from './finance/FinanceOverviewTab';
-import { FinanceBudgetTab } from './finance/FinanceBudgetTab';
-import { FinanceTransactionsTab } from './finance/FinanceTransactionsTab';
-import { FinanceAccountsTab } from './finance/FinanceAccountsTab';
-import { FinanceBillsTab } from './finance/FinanceBillsTab';
-import { FinanceDebtsTab } from './finance/FinanceDebtsTab';
-import { FinanceEmergencyTab } from './finance/FinanceEmergencyTab';
-import { FinanceGoalsTab } from './finance/FinanceGoalsTab';
-import { FinanceInvestmentsTab } from './finance/FinanceInvestmentsTab';
 import { FinanceTransactionModal } from './finance/FinanceTransactionModal';
 import { FinanceDiagnosisModal } from './finance/FinanceDiagnosisModal';
 import { EmergencyConfigModal } from './finance/EmergencyConfigModal';
@@ -28,6 +20,15 @@ import {
 } from 'lucide-react';
 import { FinanceSubTab } from '../../types/finance';
 
+const FinanceBudgetTab = lazy(() => import('./finance/FinanceBudgetTab').then((module) => ({ default: module.FinanceBudgetTab })));
+const FinanceTransactionsTab = lazy(() => import('./finance/FinanceTransactionsTab').then((module) => ({ default: module.FinanceTransactionsTab })));
+const FinanceAccountsTab = lazy(() => import('./finance/FinanceAccountsTab').then((module) => ({ default: module.FinanceAccountsTab })));
+const FinanceBillsTab = lazy(() => import('./finance/FinanceBillsTab').then((module) => ({ default: module.FinanceBillsTab })));
+const FinanceDebtsTab = lazy(() => import('./finance/FinanceDebtsTab').then((module) => ({ default: module.FinanceDebtsTab })));
+const FinanceEmergencyTab = lazy(() => import('./finance/FinanceEmergencyTab').then((module) => ({ default: module.FinanceEmergencyTab })));
+const FinanceGoalsTab = lazy(() => import('./finance/FinanceGoalsTab').then((module) => ({ default: module.FinanceGoalsTab })));
+const FinanceInvestmentsTab = lazy(() => import('./finance/FinanceInvestmentsTab').then((module) => ({ default: module.FinanceInvestmentsTab })));
+
 export const FinanceView: React.FC = () => {
   const {
     subTab: activeSubTab,
@@ -41,6 +42,9 @@ export const FinanceView: React.FC = () => {
   const navItems: { id: FinanceSubTab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'Visão Geral', icon: <PieChart className="h-4 w-4" /> },
     { id: 'budget', label: 'Orçamento', icon: <DollarSign className="h-4 w-4" /> },
+    { id: 'transactions', label: 'Movimentações', icon: <ReceiptText className="h-4 w-4" /> },
+    { id: 'accounts', label: 'Contas e cartões', icon: <WalletCards className="h-4 w-4" /> },
+    { id: 'bills', label: 'Compromissos', icon: <CalendarClock className="h-4 w-4" />, badge: overdueBills.length || undefined },
     { id: 'goals', label: 'Metas', icon: <Target className="h-4 w-4" /> },
     { id: 'debts', label: 'Dívidas', icon: <ShieldAlert className="h-4 w-4" /> },
     { id: 'investments', label: 'Investimentos', icon: <TrendingUp className="h-4 w-4" /> },
@@ -60,7 +64,7 @@ export const FinanceView: React.FC = () => {
   const currentMeta = pageMeta[activeSubTab] || pageMeta.overview!;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-neutral-50/50 p-4 md:p-6 dark:bg-neutral-950">
+    <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto bg-neutral-50/50 p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:p-4 md:p-6 md:pb-6 dark:bg-neutral-950">
       <div className="mx-auto max-w-[1540px] space-y-5">
         {/* Top Header */}
         {!['overview', 'goals', 'debts', 'budget', 'investments'].includes(activeSubTab) && (
@@ -126,6 +130,7 @@ export const FinanceView: React.FC = () => {
         </div>
 
         {/* Sub Tab Views */}
+        <Suspense fallback={<div role="status" className="grid min-h-72 place-items-center text-sm font-semibold text-neutral-500">Carregando área financeira...</div>}>
         <div className="pt-2">
           {activeSubTab === 'overview' && <FinanceOverviewTab />}
           {activeSubTab === 'emergency' && <FinanceEmergencyTab />}
@@ -137,6 +142,7 @@ export const FinanceView: React.FC = () => {
           {activeSubTab === 'goals' && <FinanceGoalsTab />}
           {activeSubTab === 'investments' && <FinanceInvestmentsTab />}
         </div>
+        </Suspense>
       </div>
 
       {/* Global Modals */}
@@ -144,6 +150,16 @@ export const FinanceView: React.FC = () => {
       <FinanceDiagnosisModal />
       <EmergencyConfigModal />
       <EmergencyDepositModal />
+
+      <nav aria-label="Navegação financeira móvel" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-neutral-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden dark:border-neutral-800 dark:bg-neutral-900/95">
+        {navItems.slice(0, 5).map((item) => {
+          const active = activeSubTab === item.id;
+          return <button key={item.id} onClick={() => setActiveSubTab(item.id)} className={`relative flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[10px] font-bold ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-500'}`}>
+            {item.icon}<span className="max-w-full truncate">{item.id === 'accounts' ? 'Contas' : item.id === 'transactions' ? 'Lançamentos' : item.label}</span>
+            {item.badge ? <span className="absolute right-3 top-2 rounded-full bg-rose-600 px-1.5 text-[9px] text-white">{item.badge}</span> : null}
+          </button>;
+        })}
+      </nav>
     </div>
   );
 };

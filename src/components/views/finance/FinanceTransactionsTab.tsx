@@ -15,7 +15,6 @@ import {
   Sparkles,
   Trash2,
   Filter,
-  FolderKanban,
   Target,
   FileCheck,
 } from 'lucide-react';
@@ -324,12 +323,6 @@ export const FinanceTransactionsTab: React.FC = () => {
                           />
                           {catConfig?.name || tx.masterCategory}
                         </span>
-                        {tx.projectId && (
-                          <span className="rounded bg-neutral-100 px-1 py-0.2 text-[10px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 flex items-center gap-1">
-                            <FolderKanban className="h-2.5 w-2.5" />
-                            Projeto
-                          </span>
-                        )}
                         {tx.goalId && (
                           <span className="rounded bg-amber-50 px-1 py-0.2 text-[10px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 flex items-center gap-1">
                             <Target className="h-2.5 w-2.5" />

@@ -22,5 +22,6 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": ["src/main.tsx", "src/vite-env.d.ts", "src/**/*.test.ts"]
 }

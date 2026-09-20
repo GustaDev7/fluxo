@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useFinance } from '../../../context/FinanceContext';
-import { useApp } from '../../../context/AppContext';
 import { TransactionType, MasterCategory } from '../../../types/finance';
 import { MASTER_CATEGORY_CONFIG, smartParseTransaction } from '../../../utils/financeUtils';
 import { getTodayDateString } from '../../../utils/date';
@@ -16,7 +15,6 @@ import {
   Check,
   Calendar,
   Layers,
-  FolderKanban,
   Target,
 } from 'lucide-react';
 
@@ -31,7 +29,6 @@ export const FinanceTransactionModal: React.FC = () => {
     creditCards,
     goals,
   } = useFinance();
-  const { projects } = useApp();
 
   const [type, setType] = useState<TransactionType>(transactionModalInitialType);
   const [amount, setAmount] = useState<string>('');
@@ -42,7 +39,6 @@ export const FinanceTransactionModal: React.FC = () => {
   const [accountId, setAccountId] = useState<string>('');
   const [destinationAccountId, setDestinationAccountId] = useState<string>('');
   const [cardId, setCardId] = useState<string>('');
-  const [projectId, setProjectId] = useState<string>('');
   const [goalId, setGoalId] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [recurrence, setRecurrence] = useState<'none' | 'monthly' | 'weekly' | 'yearly'>('none');
@@ -69,7 +65,6 @@ export const FinanceTransactionModal: React.FC = () => {
       setAccountId(accounts[0]?.id || '');
       setDestinationAccountId(accounts[1]?.id || '');
       setCardId('');
-      setProjectId('');
       setGoalId('');
       setNotes('');
       setRecurrence('none');
@@ -105,7 +100,6 @@ export const FinanceTransactionModal: React.FC = () => {
       accountId: cardId ? undefined : accountId || undefined,
       destinationAccountId: type === 'transfer' ? destinationAccountId : undefined,
       cardId: cardId || undefined,
-      projectId: projectId || undefined,
       goalId: goalId || undefined,
       recurrence: recurrence !== 'none' ? recurrence : undefined,
       notes: notes.trim() || undefined,
@@ -388,26 +382,8 @@ export const FinanceTransactionModal: React.FC = () => {
             </div>
           )}
 
-          {/* Links to Projects / Goals */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 block mb-1">
-                Vincular a Projeto do Fluxo (Opcional)
-              </label>
-              <select
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 outline-none focus:border-indigo-500 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
-              >
-                <option value="">Nenhum Projeto</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
+          {/* Optional link to a financial goal */}
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 block mb-1">
                 Vincular a Meta Financeira (Opcional)

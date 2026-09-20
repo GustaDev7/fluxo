@@ -10,13 +10,11 @@ import {
   CheckCircle2,
   Clock,
   Plus,
-  CheckSquare,
   ArrowRight,
   DollarSign,
   X,
   CreditCard,
   Building2,
-  ListTodo,
 } from 'lucide-react';
 
 export const FinanceBillsTab: React.FC = () => {
@@ -25,7 +23,6 @@ export const FinanceBillsTab: React.FC = () => {
     accounts,
     creditCards,
     payBill,
-    generateTaskForBill,
     addBill,
     overdueBills,
     todayBills,
@@ -203,7 +200,6 @@ export const FinanceBillsTab: React.FC = () => {
                 key={bill.id}
                 bill={bill}
                 onPay={() => payBill(bill.id)}
-                onGenerateTask={() => generateTaskForBill(bill)}
                 isOverdue
               />
             ))}
@@ -227,7 +223,6 @@ export const FinanceBillsTab: React.FC = () => {
                 key={bill.id}
                 bill={bill}
                 onPay={() => payBill(bill.id)}
-                onGenerateTask={() => generateTaskForBill(bill)}
               />
             ))}
           </div>
@@ -254,7 +249,6 @@ export const FinanceBillsTab: React.FC = () => {
                 key={bill.id}
                 bill={bill}
                 onPay={() => payBill(bill.id)}
-                onGenerateTask={() => generateTaskForBill(bill)}
               />
             ))}
           </div>
@@ -305,11 +299,10 @@ export const FinanceBillsTab: React.FC = () => {
 interface BillCardProps {
   bill: FinanceBill;
   onPay: () => void;
-  onGenerateTask: () => void;
   isOverdue?: boolean;
 }
 
-const BillCard: React.FC<BillCardProps> = ({ bill, onPay, onGenerateTask, isOverdue }) => {
+const BillCard: React.FC<BillCardProps> = ({ bill, onPay, isOverdue }) => {
   const catConfig = MASTER_CATEGORY_CONFIG[bill.masterCategory];
 
   return (
@@ -349,12 +342,6 @@ const BillCard: React.FC<BillCardProps> = ({ bill, onPay, onGenerateTask, isOver
             <span style={{ color: catConfig?.color }} className="font-semibold">
               {catConfig?.name || bill.masterCategory}
             </span>
-            {bill.linkedTaskId && (
-              <span className="flex items-center gap-1 text-[10px] text-indigo-600 font-bold dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded">
-                <CheckSquare className="h-3 w-3" />
-                Tarefa no Fluxo
-              </span>
-            )}
           </div>
         </div>
       </div>
@@ -365,17 +352,6 @@ const BillCard: React.FC<BillCardProps> = ({ bill, onPay, onGenerateTask, isOver
         </div>
 
         <div className="flex items-center gap-2">
-          {!bill.linkedTaskId && (
-            <button
-              onClick={onGenerateTask}
-              title="Criar lembrete nas Tarefas do Fluxo"
-              className="flex items-center gap-1 rounded-xl border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 transition-colors"
-            >
-              <ListTodo className="h-3.5 w-3.5 text-indigo-600" />
-              <span className="hidden md:inline">Gerar Tarefa</span>
-            </button>
-          )}
-
           <button
             onClick={onPay}
             className="flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-95 transition-all"

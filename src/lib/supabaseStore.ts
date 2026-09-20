@@ -1,13 +1,6 @@
 import { supabase } from './supabase';
 
 type Row = Record<string, any>;
-
-async function rows(table: string) {
-  const { data, error } = await supabase.from(table).select('*');
-  if (error) throw error;
-  return (data ?? []) as Row[];
-}
-
 async function replaceRows(table: string, userId: string, nextRows: Row[]) {
   const { data: current, error: readError } = await supabase.from(table).select('id').eq('user_id', userId);
   if (readError) throw readError;
@@ -24,127 +17,6 @@ async function replaceRows(table: string, userId: string, nextRows: Row[]) {
     if (error) throw error;
   }
 }
-
-const localDateTime = (date?: string, time?: string) =>
-  date ? `${date}T${time || '00:00'}:00-03:00` : null;
-
-const splitDateTime = (value?: string | null) => {
-  if (!value) return { date: undefined, time: undefined };
-  const formatted = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(value));
-  const [date, time] = formatted.split(' ');
-  return { date, time };
-};
-
-export async function loadProductivityData() {
-  const [profileRows, projectsRows, tasksRows, eventsRows, notesRows, goalsRows, habitsRows, timeRows, notificationRows, planRows, chatRows] =
-    await Promise.all([
-      rows('profiles'), rows('projects'), rows('tasks'), rows('calendar_events'), rows('notes'),
-      rows('goals'), rows('habits'), rows('time_entries'), rows('notifications'), rows('monthly_plans'), rows('ai_chat_messages'),
-    ]);
-
-  const profile = profileRows[0];
-  return {
-    user: profile ? {
-      id: profile.id,
-      name: profile.full_name || '',
-      email: '',
-      avatar: profile.avatar_url || '',
-      role: 'Pro',
-      theme: 'system',
-      workStartHour: 8,
-      workEndHour: 18,
-      pomodoroMinutes: 25,
-      shortBreakMinutes: 5,
-      longBreakMinutes: 15,
-      visibleWidgets: { todayTasks: true, overdueTasks: true, upcomingEvents: true, smartPriorities: true, habits: true, goals: true, metrics: true },
-    } : null,
-    projects: projectsRows.map((row) => ({
-      id: row.id, name: row.name, description: row.description || '', color: row.color, icon: row.icon,
-      status: row.status, priority: row.priority, startDate: row.start_date || undefined, dueDate: row.due_date || undefined,
-      progress: row.progress, ...(row.metadata || {}),
-    })),
-    tasks: tasksRows.map((row) => {
-      const due = splitDateTime(row.due_at);
-      return {
-        id: row.id, projectId: row.project_id || undefined, title: row.title, description: row.description || '',
-        status: row.status, priority: row.priority, dueDate: due.date, dueTime: due.time,
-        estimatedDuration: row.estimated_duration, timeSpent: row.time_spent, tags: row.tags || [],
-        checklist: row.checklist || [], subtasks: row.subtasks || [], reminders: row.reminders || [],
-        recurrence: row.recurrence || { type: 'none' }, completedAt: row.completed_at || undefined,
-        isInbox: row.is_inbox, createdAt: row.created_at,
-      };
-    }),
-    events: eventsRows.map((row) => {
-      const start = splitDateTime(row.starts_at);
-      const end = splitDateTime(row.ends_at);
-      return {
-        id: row.id, projectId: row.project_id || undefined, taskId: row.task_id || undefined,
-        title: row.title, description: row.description || '', startDate: start.date, startTime: start.time,
-        endDate: end.date, endTime: end.time, isAllDay: row.is_all_day, location: row.location || '',
-        recurrence: row.recurrence, reminder: row.reminder_minutes, isFocusBlock: row.is_focus_block,
-      };
-    }),
-    notes: notesRows.map((row) => ({ id: row.id, projectId: row.project_id || undefined, taskId: row.task_id || undefined, title: row.title, tags: row.tags || [], blocks: row.blocks || [], createdAt: row.created_at, updatedAt: row.updated_at })),
-    goals: goalsRows.map((row) => ({ id: row.id, projectId: row.project_id || undefined, title: row.title, description: row.description || '', period: 'monthly', category: row.category, targetValue: Number(row.target_value || 0), currentValue: Number(row.current_value || 0), unit: row.unit || '%', deadline: row.deadline || undefined, linkedTaskIds: [], status: row.status })),
-    habits: habitsRows.map((row) => ({ id: row.id, name: row.name, category: row.category, icon: row.icon, color: row.color, ...(row.frequency || {}), targetDaysPerWeek: row.target_days_per_week, completedDates: row.completed_dates || [], currentStreak: row.current_streak, longestStreak: row.longest_streak })),
-    timeEntries: timeRows.map((row) => ({ id: row.id, taskId: row.task_id || undefined, projectId: row.project_id || undefined, startTime: row.started_at, endTime: row.ended_at, durationMinutes: row.duration_minutes, note: row.note || '' })),
-    notifications: notificationRows.map((row) => ({ id: row.id, title: row.title, message: row.message, type: row.type, read: row.is_read, timestamp: new Date(row.created_at).toLocaleString('pt-BR'), ...(row.action || {}) })),
-    monthlyPlan: planRows[0] ? { month: planRows[0].month, objectives: planRows[0].objectives, finances: planRows[0].finances, focusNotes: planRows[0].focus_notes } : null,
-    chatMessages: chatRows.map((row) => ({ id: row.id, sender: row.sender, text: row.text, timestamp: new Date(row.occurred_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), ...(row.metadata || {}) })),
-  };
-}
-
-export async function saveProductivityData(userId: string, data: any) {
-  const profile = {
-    id: userId,
-    full_name: data.user.name,
-    avatar_url: data.user.avatar || null,
-    timezone: 'America/Sao_Paulo',
-    locale: 'pt-BR',
-    updated_at: new Date().toISOString(),
-  };
-  const { error: profileError } = await supabase.from('profiles').upsert(profile);
-  if (profileError) throw profileError;
-
-  await replaceRows('projects', userId, data.projects.map((item: any) => ({
-    id: item.id, user_id: userId, name: item.name, description: item.description || null, color: item.color,
-    icon: item.icon, status: item.status, priority: item.priority, start_date: item.startDate || null,
-    due_date: item.dueDate || null, progress: item.progress || 0,
-    metadata: { members: item.members || [], viewPreference: item.viewPreference, isRecurring: item.isRecurring, recurrenceFrequency: item.recurrenceFrequency, routines: item.routines || [], links: item.links || [], workLogs: item.workLogs || [] },
-  })));
-  await replaceRows('tasks', userId, data.tasks.map((item: any) => ({
-    id: item.id, user_id: userId, project_id: item.projectId || null, title: item.title,
-    description: item.description || null, status: item.status, priority: item.priority,
-    due_at: localDateTime(item.dueDate, item.dueTime), estimated_duration: item.estimatedDuration || 0,
-    time_spent: item.timeSpent || 0, tags: item.tags || [], checklist: item.checklist || [],
-    subtasks: item.subtasks || [], reminders: item.reminders || [], recurrence: item.recurrence || { type: 'none' },
-    completed_at: item.completedAt || null, is_inbox: Boolean(item.isInbox),
-  })));
-  await replaceRows('calendar_events', userId, data.events.map((item: any) => ({
-    id: item.id, user_id: userId, project_id: item.projectId || null, task_id: item.taskId || null,
-    title: item.title, description: item.description || null,
-    starts_at: localDateTime(item.startDate, item.startTime), ends_at: localDateTime(item.endDate || item.startDate, item.endTime || item.startTime),
-    is_all_day: Boolean(item.isAllDay), location: item.location || null, recurrence: item.recurrence || null,
-    reminder_minutes: typeof item.reminder === 'number' ? item.reminder : null, is_focus_block: Boolean(item.isFocusBlock),
-  })));
-  await replaceRows('notes', userId, data.notes.map((item: any) => ({ id: item.id, user_id: userId, project_id: item.projectId || null, task_id: item.taskId || null, title: item.title, tags: item.tags || [], blocks: item.blocks || [] })));
-  await replaceRows('goals', userId, data.goals.map((item: any) => ({ id: item.id, user_id: userId, project_id: item.projectId || null, title: item.title, description: item.description || null, category: item.category || 'Geral', target_value: item.targetValue || null, current_value: item.currentValue || 0, unit: item.unit || null, deadline: item.deadline || null, status: item.status || 'active' })));
-  await replaceRows('habits', userId, data.habits.map((item: any) => ({ id: item.id, user_id: userId, name: item.name, category: item.category || null, icon: item.icon || null, color: item.color || null, frequency: { frequency: item.frequency, timeOfDay: item.timeOfDay }, target_days_per_week: item.targetDaysPerWeek || null, completed_dates: item.completedDates || [], current_streak: item.currentStreak || 0, longest_streak: item.longestStreak || 0 })));
-  await replaceRows('time_entries', userId, data.timeEntries.map((item: any) => ({ id: item.id, user_id: userId, task_id: item.taskId || null, project_id: item.projectId || null, started_at: item.startTime, ended_at: item.endTime || null, duration_minutes: item.durationMinutes || 0, note: item.note || null })));
-  await replaceRows('notifications', userId, data.notifications.map((item: any) => ({ id: item.id, user_id: userId, title: item.title, message: item.message, type: item.type, is_read: Boolean(item.read), action: item.linkView ? { linkView: item.linkView } : null, created_at: new Date().toISOString() })));
-  await replaceRows('ai_chat_messages', userId, data.chatMessages.map((item: any) => ({ id: item.id, user_id: userId, sender: item.sender, text: item.text, occurred_at: new Date().toISOString(), metadata: { suggestedPrompts: item.suggestedPrompts, executedActions: item.executedActions, isVoice: item.isVoice } })));
-  const { error: planError } = await supabase.from('monthly_plans').upsert({ user_id: userId, month: data.monthlyPlan.month, objectives: data.monthlyPlan.objectives || [], finances: data.monthlyPlan.finances || [], focus_notes: data.monthlyPlan.focusNotes || '', updated_at: new Date().toISOString() });
-  if (planError) throw planError;
-}
-
 export async function loadFinanceData(userId: string) {
   const ownedRows = async (table: string) => {
     const { data, error } = await supabase.from(table).select('*').eq('user_id', userId);
@@ -219,16 +91,31 @@ export async function saveFinanceData(userId: string, data: any) {
     const { data: budgetRow, error: budgetError } = await supabase.from('monthly_budgets').upsert(budgetPayload, { onConflict: 'user_id,month' }).select('id').single();
     if (budgetError) throw budgetError;
     const persistedBudgetId = budgetRow.id;
-    const { error: clearIncomeError } = await supabase.from('budget_income_sources').delete().eq('user_id', userId).eq('budget_id', persistedBudgetId);
-    if (clearIncomeError) throw clearIncomeError;
-    if (monthlyBudget.incomeSources?.length) {
-      const { error } = await supabase.from('budget_income_sources').insert(monthlyBudget.incomeSources.map((item: any, index: number) => ({ id:item.id,user_id:userId,budget_id:persistedBudgetId,name:item.name,source_type:item.type,planned_amount:item.plannedAmount,received_amount:item.receivedAmount,recurring:item.recurring,sort_order:index })));
+    const incomeRows = (monthlyBudget.incomeSources || []).map((item: any, index: number) => ({ id:item.id,user_id:userId,budget_id:persistedBudgetId,name:item.name,source_type:item.type,planned_amount:item.plannedAmount,received_amount:item.receivedAmount,recurring:item.recurring,sort_order:index }));
+    const { data: currentIncome, error: currentIncomeError } = await supabase.from('budget_income_sources').select('id').eq('user_id', userId).eq('budget_id', persistedBudgetId);
+    if (currentIncomeError) throw currentIncomeError;
+    if (incomeRows.length) {
+      const { error } = await supabase.from('budget_income_sources').upsert(incomeRows);
       if (error) throw error;
     }
-    const { error: clearCategoryError } = await supabase.from('budget_categories').delete().eq('user_id', userId).eq('budget_id', persistedBudgetId);
-    if (clearCategoryError) throw clearCategoryError;
-    if (monthlyBudget.categories?.length) {
-      const { error } = await supabase.from('budget_categories').insert(monthlyBudget.categories.map((item: any) => ({ id:item.id,user_id:userId,budget_id:persistedBudgetId,parent_id:item.parentId||null,master_category:item.masterCategory||null,name:item.name,description:item.description||null,color:item.color,icon:item.icon||null,allocation_mode:item.allocationMode,percentage:item.percentage,fixed_amount:item.fixedAmount,planned_amount:item.plannedAmount,spending_limit:item.spendingLimit??null,priority:item.priority,archived:item.archived })));
+    const incomeIds = new Set(incomeRows.map((item: Row) => item.id));
+    const removedIncomeIds = (currentIncome || []).map((item: Row) => item.id).filter((id: string) => !incomeIds.has(id));
+    if (removedIncomeIds.length) {
+      const { error } = await supabase.from('budget_income_sources').delete().eq('user_id', userId).eq('budget_id', persistedBudgetId).in('id', removedIncomeIds);
+      if (error) throw error;
+    }
+
+    const categoryRows = (monthlyBudget.categories || []).map((item: any) => ({ id:item.id,user_id:userId,budget_id:persistedBudgetId,parent_id:item.parentId||null,master_category:item.masterCategory||null,name:item.name,description:item.description||null,color:item.color,icon:item.icon||null,allocation_mode:item.allocationMode,percentage:item.percentage,fixed_amount:item.fixedAmount,planned_amount:item.plannedAmount,spending_limit:item.spendingLimit??null,priority:item.priority,archived:item.archived }));
+    const { data: currentCategories, error: currentCategoriesError } = await supabase.from('budget_categories').select('id').eq('user_id', userId).eq('budget_id', persistedBudgetId);
+    if (currentCategoriesError) throw currentCategoriesError;
+    if (categoryRows.length) {
+      const { error } = await supabase.from('budget_categories').upsert(categoryRows);
+      if (error) throw error;
+    }
+    const categoryIds = new Set(categoryRows.map((item: Row) => item.id));
+    const removedCategoryIds = (currentCategories || []).map((item: Row) => item.id).filter((id: string) => !categoryIds.has(id));
+    if (removedCategoryIds.length) {
+      const { error } = await supabase.from('budget_categories').delete().eq('user_id', userId).eq('budget_id', persistedBudgetId).in('id', removedCategoryIds);
       if (error) throw error;
     }
   }

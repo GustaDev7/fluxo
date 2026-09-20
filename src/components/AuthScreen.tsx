@@ -96,13 +96,13 @@ export const AuthScreen: React.FC = () => {
               Seus dados protegidos por usuário
             </div>
             <h1 className="text-5xl font-black leading-[1.05] tracking-tight">
-              Sua vida organizada em um só lugar.
+              Seu salário com destino, clareza e controle.
             </h1>
             <p className="mt-5 text-base leading-relaxed text-indigo-100/80">
-              Planeje, acompanhe e execute o que importa com clareza.
+              Organize orçamento, contas, dívidas, metas e investimentos em uma única visão financeira.
             </p>
           </div>
-          <p className="relative text-xs text-indigo-200/60">Fluxo · Sistema Operacional Pessoal</p>
+          <p className="relative text-xs text-indigo-200/60">Fluxo · Central de Finanças Pessoais</p>
         </section>
 
         <section className="flex items-center justify-center p-6 sm:p-10">
@@ -112,7 +112,7 @@ export const AuthScreen: React.FC = () => {
               {mode === 'signin' ? 'Bem-vindo de volta' : 'Crie sua conta'}
             </h2>
             <p className="mt-2 text-sm text-neutral-400">
-              {mode === 'signin' ? 'Entre para acessar sua central pessoal.' : 'Comece agora a organizar sua vida no Fluxo.'}
+              {mode === 'signin' ? 'Entre para acessar sua central financeira.' : 'Comece agora a organizar seu dinheiro no Fluxo.'}
             </p>
 
             <form onSubmit={submit} className="mt-8 space-y-4">
