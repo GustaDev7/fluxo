@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Database, LogOut, Moon, RefreshCw, Sun, WalletCards } from 'lucide-react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
+import { Database, LogOut, Moon, RefreshCw, Sparkles, Sun, WalletCards } from 'lucide-react';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { AuthScreen } from './components/AuthScreen';
 import { FluxoLogo } from './components/FluxoLogo';
@@ -8,10 +8,13 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { FinanceProvider, useFinance } from './context/FinanceContext';
 import { safeStorage } from './lib/safeStorage';
 
+const FinanceAssistant = lazy(() => import('./components/FinanceAssistant').then((module) => ({ default: module.FinanceAssistant })));
+
 const FinanceApp: React.FC = () => {
   const { user, signOut } = useAuth();
   const { isFinanceDbConnected, isFinanceDbSaving, isFinanceHydrated, lastFinanceDbSyncedAt, forceFinanceDbSync, openTransactionModal } = useFinance();
   const [dark, setDark] = useState(() => safeStorage.getItem('fluxo_theme') === 'dark');
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
@@ -27,6 +30,10 @@ const FinanceApp: React.FC = () => {
           <span className="hidden text-sm font-bold text-neutral-500 sm:block">Finanças pessoais</span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
+          <button onClick={() => setIsAssistantOpen(true)} className="group flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-2.5 text-xs font-black text-white shadow-sm hover:from-indigo-500 hover:to-violet-500 sm:px-4" aria-label="Abrir Fluxo IA">
+            <Sparkles className="h-4 w-4 transition-transform group-hover:rotate-12" />
+            <span className="hidden sm:inline">Fluxo IA</span>
+          </button>
           <button onClick={() => openTransactionModal('expense')} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-500 sm:px-4">
             <span className="sm:hidden">+ Lançar</span><span className="hidden sm:inline">+ Novo lançamento</span>
           </button>
@@ -57,6 +64,10 @@ const FinanceApp: React.FC = () => {
           <FinanceView />
         </main>
       )}
+
+      <Suspense fallback={null}>
+        {isAssistantOpen ? <FinanceAssistant isOpen onClose={() => setIsAssistantOpen(false)} /> : null}
+      </Suspense>
     </div>
   );
 };
