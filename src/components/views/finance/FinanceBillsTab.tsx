@@ -15,6 +15,7 @@ import {
   X,
   CreditCard,
   Building2,
+  Trash2,
 } from 'lucide-react';
 
 export const FinanceBillsTab: React.FC = () => {
@@ -24,6 +25,7 @@ export const FinanceBillsTab: React.FC = () => {
     creditCards,
     payBill,
     addBill,
+    deleteBill,
     overdueBills,
     todayBills,
     upcomingBills,
@@ -57,6 +59,15 @@ export const FinanceBillsTab: React.FC = () => {
     setIsAddBillOpen(false);
     setNewTitle('');
     setNewAmount('');
+  };
+
+  const handleDeleteBill = (bill: FinanceBill) => {
+    const recurrenceWarning = bill.recurrence && bill.recurrence !== 'none'
+      ? ' Isso também encerrará a recorrência futura.'
+      : '';
+    if (window.confirm(`Excluir o compromisso “${bill.title}”?${recurrenceWarning}`)) {
+      deleteBill(bill.id);
+    }
   };
 
   const paidBills = bills.filter((b) => b.status === 'paid');
@@ -200,6 +211,7 @@ export const FinanceBillsTab: React.FC = () => {
                 key={bill.id}
                 bill={bill}
                 onPay={() => payBill(bill.id)}
+                onDelete={() => handleDeleteBill(bill)}
                 isOverdue
               />
             ))}
@@ -223,6 +235,7 @@ export const FinanceBillsTab: React.FC = () => {
                 key={bill.id}
                 bill={bill}
                 onPay={() => payBill(bill.id)}
+                onDelete={() => handleDeleteBill(bill)}
               />
             ))}
           </div>
@@ -249,6 +262,7 @@ export const FinanceBillsTab: React.FC = () => {
                 key={bill.id}
                 bill={bill}
                 onPay={() => payBill(bill.id)}
+                onDelete={() => handleDeleteBill(bill)}
               />
             ))}
           </div>
@@ -299,10 +313,11 @@ export const FinanceBillsTab: React.FC = () => {
 interface BillCardProps {
   bill: FinanceBill;
   onPay: () => void;
+  onDelete: () => void;
   isOverdue?: boolean;
 }
 
-const BillCard: React.FC<BillCardProps> = ({ bill, onPay, isOverdue }) => {
+const BillCard: React.FC<BillCardProps> = ({ bill, onPay, onDelete, isOverdue }) => {
   const catConfig = MASTER_CATEGORY_CONFIG[bill.masterCategory];
 
   return (
@@ -353,6 +368,16 @@ const BillCard: React.FC<BillCardProps> = ({ bill, onPay, isOverdue }) => {
 
         <div className="flex items-center gap-2">
           <button
+            type="button"
+            onClick={onDelete}
+            aria-label={`Excluir compromisso ${bill.title}`}
+            title="Excluir compromisso"
+            className="grid h-8 w-8 place-items-center rounded-xl border border-rose-200 text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-900/70 dark:text-rose-400 dark:hover:bg-rose-950/40"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
             onClick={onPay}
             className="flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-95 transition-all"
           >
