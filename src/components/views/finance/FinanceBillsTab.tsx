@@ -15,6 +15,7 @@ import {
   X,
   CreditCard,
   Building2,
+  Pencil,
   Trash2,
 } from 'lucide-react';
 
@@ -25,6 +26,7 @@ export const FinanceBillsTab: React.FC = () => {
     creditCards,
     payBill,
     addBill,
+    updateBill,
     deleteBill,
     overdueBills,
     todayBills,
@@ -38,6 +40,12 @@ export const FinanceBillsTab: React.FC = () => {
   const [newCategory, setNewCategory] = useState<MasterCategory>('custos_fixos');
   const [newAccountId, setNewAccountId] = useState(accounts[0]?.id || '');
   const [newRecurrence, setNewRecurrence] = useState<'none' | 'monthly' | 'weekly' | 'yearly'>('monthly');
+  const [editingBill, setEditingBill] = useState<FinanceBill | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editCategory, setEditCategory] = useState<MasterCategory>('custos_fixos');
+  const [editRecurrence, setEditRecurrence] = useState<'none' | 'monthly' | 'weekly' | 'yearly'>('none');
 
   const handleCreateBill = (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +76,30 @@ export const FinanceBillsTab: React.FC = () => {
     if (window.confirm(`Excluir o compromisso “${bill.title}”?${recurrenceWarning}`)) {
       deleteBill(bill.id);
     }
+  };
+
+  const openEditBill = (bill: FinanceBill) => {
+    setEditingBill(bill);
+    setEditTitle(bill.title);
+    setEditAmount(String(bill.amount).replace('.', ','));
+    setEditDueDate(bill.dueDate);
+    setEditCategory(bill.masterCategory);
+    setEditRecurrence(bill.recurrence || 'none');
+  };
+
+  const handleUpdateBill = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingBill) return;
+    const amount = Number(editAmount.replace(',', '.'));
+    if (!editTitle.trim() || !Number.isFinite(amount) || amount <= 0 || !editDueDate) return;
+    updateBill(editingBill.id, {
+      title: editTitle.trim(),
+      amount,
+      dueDate: editDueDate,
+      masterCategory: editCategory,
+      recurrence: editRecurrence,
+    });
+    setEditingBill(null);
   };
 
   const paidBills = bills.filter((b) => b.status === 'paid');
@@ -193,6 +225,57 @@ export const FinanceBillsTab: React.FC = () => {
         </form>
       )}
 
+      {editingBill && (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm">
+          <form onSubmit={handleUpdateBill} className="w-full max-w-2xl space-y-4 rounded-3xl border border-neutral-200 bg-white p-5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 dark:border-neutral-800">
+              <div>
+                <h3 className="text-base font-black">Editar compromisso</h3>
+                <p className="mt-1 text-xs text-neutral-500">Atualize os dados deste vencimento.</p>
+              </div>
+              <button type="button" onClick={() => setEditingBill(null)} aria-label="Fechar edição" className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label>
+                <span className="mb-1 block text-xs font-bold text-neutral-600 dark:text-neutral-400">Nome</span>
+                <input required value={editTitle} onChange={(event) => setEditTitle(event.target.value)} className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-base dark:border-neutral-700 dark:bg-neutral-800" />
+              </label>
+              <label>
+                <span className="mb-1 block text-xs font-bold text-neutral-600 dark:text-neutral-400">Valor (R$)</span>
+                <input required inputMode="decimal" value={editAmount} onChange={(event) => setEditAmount(event.target.value)} className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-base dark:border-neutral-700 dark:bg-neutral-800" />
+              </label>
+              <label>
+                <span className="mb-1 block text-xs font-bold text-neutral-600 dark:text-neutral-400">Vencimento</span>
+                <input type="date" required value={editDueDate} onChange={(event) => setEditDueDate(event.target.value)} className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-base dark:border-neutral-700 dark:bg-neutral-800" />
+              </label>
+              <label>
+                <span className="mb-1 block text-xs font-bold text-neutral-600 dark:text-neutral-400">Categoria</span>
+                <select value={editCategory} onChange={(event) => setEditCategory(event.target.value as MasterCategory)} className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-base dark:border-neutral-700 dark:bg-neutral-800">
+                  {Object.values(MASTER_CATEGORY_CONFIG).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+              </label>
+              <label className="sm:col-span-2">
+                <span className="mb-1 block text-xs font-bold text-neutral-600 dark:text-neutral-400">Recorrência</span>
+                <select value={editRecurrence} onChange={(event) => setEditRecurrence(event.target.value as typeof editRecurrence)} className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-base dark:border-neutral-700 dark:bg-neutral-800">
+                  <option value="none">Não repetir</option>
+                  <option value="weekly">Semanal</option>
+                  <option value="monthly">Mensal</option>
+                  <option value="yearly">Anual</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setEditingBill(null)} className="min-h-11 rounded-xl border border-neutral-200 px-4 text-sm font-bold dark:border-neutral-700">Cancelar</button>
+              <button type="submit" className="min-h-11 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white hover:bg-indigo-500">Salvar alterações</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Groups of Bills */}
 
       {/* 1. Contas Atrasadas */}
@@ -211,6 +294,7 @@ export const FinanceBillsTab: React.FC = () => {
                 key={bill.id}
                 bill={bill}
                 onPay={() => payBill(bill.id)}
+                onEdit={() => openEditBill(bill)}
                 onDelete={() => handleDeleteBill(bill)}
                 isOverdue
               />
@@ -235,6 +319,7 @@ export const FinanceBillsTab: React.FC = () => {
                 key={bill.id}
                 bill={bill}
                 onPay={() => payBill(bill.id)}
+                onEdit={() => openEditBill(bill)}
                 onDelete={() => handleDeleteBill(bill)}
               />
             ))}
@@ -262,6 +347,7 @@ export const FinanceBillsTab: React.FC = () => {
                 key={bill.id}
                 bill={bill}
                 onPay={() => payBill(bill.id)}
+                onEdit={() => openEditBill(bill)}
                 onDelete={() => handleDeleteBill(bill)}
               />
             ))}
@@ -313,11 +399,12 @@ export const FinanceBillsTab: React.FC = () => {
 interface BillCardProps {
   bill: FinanceBill;
   onPay: () => void;
+  onEdit: () => void;
   onDelete: () => void;
   isOverdue?: boolean;
 }
 
-const BillCard: React.FC<BillCardProps> = ({ bill, onPay, onDelete, isOverdue }) => {
+const BillCard: React.FC<BillCardProps> = ({ bill, onPay, onEdit, onDelete, isOverdue }) => {
   const catConfig = MASTER_CATEGORY_CONFIG[bill.masterCategory];
 
   return (
@@ -367,6 +454,15 @@ const BillCard: React.FC<BillCardProps> = ({ bill, onPay, onDelete, isOverdue })
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`Editar compromisso ${bill.title}`}
+            title="Editar compromisso"
+            className="grid h-8 w-8 place-items-center rounded-xl border border-neutral-200 text-neutral-600 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
           <button
             type="button"
             onClick={onDelete}
