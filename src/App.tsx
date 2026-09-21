@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useState } from 'react';
-import { Database, LogOut, RefreshCw, Sparkles, WalletCards } from 'lucide-react';
+import { Database, LogOut, Plus, RefreshCw, Sparkles, WalletCards } from 'lucide-react';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { AuthScreen } from './components/AuthScreen';
 import { FluxoLogo } from './components/FluxoLogo';
@@ -16,19 +16,20 @@ const FinanceApp: React.FC = () => {
 
   return (
     <div className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-[#080610] text-neutral-100">
-      <header className="z-30 flex h-16 shrink-0 items-center justify-between border-b border-violet-950/80 bg-[#100b1a]/95 px-3 backdrop-blur sm:px-6">
+      <header className="z-30 flex h-14 shrink-0 items-center justify-between border-b border-violet-950/80 bg-[#100b1a]/95 px-2.5 backdrop-blur sm:h-16 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <FluxoLogo />
+          <FluxoLogo size="sm" showSubtitle={false} className="sm:hidden" />
+          <FluxoLogo className="hidden sm:flex" />
           <span className="hidden h-6 w-px bg-violet-900/60 sm:block" />
           <span className="hidden text-sm font-bold text-neutral-500 sm:block">Finanças pessoais</span>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <button onClick={() => setIsAssistantOpen(true)} className="group flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-2.5 text-xs font-black text-white shadow-sm hover:from-indigo-500 hover:to-violet-500 sm:px-4" aria-label="Abrir Fluxo IA">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <button onClick={() => setIsAssistantOpen(true)} className="group flex h-10 w-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-xs font-black text-white shadow-sm hover:from-indigo-500 hover:to-violet-500 sm:w-auto sm:px-4" aria-label="Abrir Fluxo IA">
             <Sparkles className="h-4 w-4 transition-transform group-hover:rotate-12" />
             <span className="hidden sm:inline">Fluxo IA</span>
           </button>
-          <button onClick={() => openTransactionModal('expense')} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-500 sm:px-4">
-            <span className="sm:hidden">+ Lançar</span><span className="hidden sm:inline">+ Novo lançamento</span>
+          <button onClick={() => openTransactionModal('expense')} className="flex h-10 w-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-500 sm:w-auto sm:px-4" aria-label="Novo lançamento">
+            <Plus className="h-4 w-4" /><span className="hidden sm:inline">Novo lançamento</span>
           </button>
           <button onClick={() => forceFinanceDbSync()} disabled={isFinanceDbSaving || !isFinanceHydrated} title={isFinanceDbConnected ? `Sincronizado${lastFinanceDbSyncedAt ? ` às ${lastFinanceDbSyncedAt}` : ''}` : 'Dados não sincronizados'} className={`rounded-xl p-2 disabled:opacity-50 ${isFinanceDbConnected ? 'text-emerald-600' : 'text-amber-600'}`} aria-label="Sincronizar dados financeiros">
             {isFinanceDbSaving ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Database className="h-5 w-5" />}

@@ -18,6 +18,7 @@ import {
   CalendarDays,
   Download,
   LockKeyhole,
+  MoreHorizontal,
   X,
 } from 'lucide-react';
 import { FinanceSubTab, MonthlyClosing } from '../../types/finance';
@@ -43,6 +44,7 @@ export const FinanceView: React.FC = () => {
     exportFinanceBackup,
   } = useFinance();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isClosingOpen, setIsClosingOpen] = useState(false);
   const [closingRating, setClosingRating] = useState<MonthlyClosing['rating']>('good');
   const [closingNotes, setClosingNotes] = useState('');
@@ -51,14 +53,17 @@ export const FinanceView: React.FC = () => {
     if (activeSubTab === 'transactions' || activeSubTab === 'accounts') setActiveSubTab('overview');
   }, [activeSubTab, setActiveSubTab]);
 
-  const navItems: { id: FinanceSubTab; label: string; icon: React.ReactNode; badge?: number }[] = [
-    { id: 'overview', label: 'Visão Geral', icon: <PieChart className="h-4 w-4" /> },
-    { id: 'budget', label: 'Orçamento', icon: <DollarSign className="h-4 w-4" /> },
-    { id: 'bills', label: 'Compromissos', icon: <CalendarClock className="h-4 w-4" />, badge: overdueBills.length || undefined },
-    { id: 'goals', label: 'Metas', icon: <Target className="h-4 w-4" /> },
-    { id: 'debts', label: 'Dívidas', icon: <ShieldAlert className="h-4 w-4" /> },
-    { id: 'investments', label: 'Investimentos', icon: <TrendingUp className="h-4 w-4" /> },
+  const navItems: { id: FinanceSubTab; label: string; mobileLabel: string; icon: React.ReactNode; badge?: number }[] = [
+    { id: 'overview', label: 'Visão Geral', mobileLabel: 'Início', icon: <PieChart className="h-4 w-4" /> },
+    { id: 'budget', label: 'Orçamento', mobileLabel: 'Orçamento', icon: <DollarSign className="h-4 w-4" /> },
+    { id: 'bills', label: 'Compromissos', mobileLabel: 'Agenda', icon: <CalendarClock className="h-4 w-4" />, badge: overdueBills.length || undefined },
+    { id: 'goals', label: 'Metas', mobileLabel: 'Metas', icon: <Target className="h-4 w-4" /> },
+    { id: 'debts', label: 'Dívidas', mobileLabel: 'Dívidas', icon: <ShieldAlert className="h-4 w-4" /> },
+    { id: 'investments', label: 'Investimentos', mobileLabel: 'Investir', icon: <TrendingUp className="h-4 w-4" /> },
   ];
+  const mobilePrimaryItems = navItems.filter((item) => ['overview', 'budget', 'bills', 'goals'].includes(item.id));
+  const mobileMoreItems = navItems.filter((item) => ['debts', 'investments'].includes(item.id));
+  const isMobileMoreActive = mobileMoreItems.some((item) => item.id === activeSubTab);
 
   const pageMeta: Partial<Record<FinanceSubTab, { title: string; description: string }>> = {
     overview: { title: 'Visão Geral', description: 'Seu panorama financeiro consolidado, com dados de todas as áreas.' },
@@ -109,7 +114,7 @@ export const FinanceView: React.FC = () => {
         </div>
         )}
 
-        <section className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-neutral-800 dark:bg-neutral-900">
+        <section className="flex flex-col gap-2.5 rounded-2xl border border-neutral-200 bg-white p-2.5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-3 dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex min-w-0 items-center gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-500/10 text-indigo-500"><CalendarDays className="h-5 w-5" /></span>
             <div className="min-w-0">
@@ -119,13 +124,13 @@ export const FinanceView: React.FC = () => {
             <span className={`hidden rounded-full px-2.5 py-1 text-[10px] font-bold sm:inline-flex ${isSelectedMonthClosed ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'}`}>{isSelectedMonthClosed ? 'Mês fechado' : 'Em acompanhamento'}</span>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:flex">
-            <button onClick={exportFinanceBackup} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-neutral-200 px-3 text-xs font-bold hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800"><Download className="h-4 w-4" />Backup</button>
-            <button onClick={() => setIsClosingOpen(true)} className="flex min-h-10 items-center justify-center gap-2 rounded-xl bg-neutral-900 px-3 text-xs font-bold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900"><LockKeyhole className="h-4 w-4" />{isSelectedMonthClosed ? 'Atualizar fechamento' : 'Fechar mês'}</button>
+            <button onClick={exportFinanceBackup} className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 px-2.5 text-[11px] font-bold hover:bg-neutral-50 sm:min-h-10 sm:gap-2 sm:px-3 sm:text-xs dark:border-neutral-700 dark:hover:bg-neutral-800"><Download className="h-4 w-4" />Backup</button>
+            <button onClick={() => setIsClosingOpen(true)} className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-neutral-900 px-2.5 text-[11px] font-bold text-white hover:bg-neutral-800 sm:min-h-10 sm:gap-2 sm:px-3 sm:text-xs dark:bg-neutral-100 dark:text-neutral-900"><LockKeyhole className="h-4 w-4" /><span className="truncate">{isSelectedMonthClosed ? 'Atualizar mês' : 'Fechar mês'}</span></button>
           </div>
         </section>
 
         {/* Sub Navigation Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto border-b border-neutral-200/80 dark:border-neutral-800">
+        <div className="hidden items-center gap-2 overflow-x-auto border-b border-neutral-200/80 md:flex dark:border-neutral-800">
           {navItems.map((item) => {
             const isActive = activeSubTab === item.id;
             return (
@@ -170,15 +175,25 @@ export const FinanceView: React.FC = () => {
       <EmergencyConfigModal />
       <EmergencyDepositModal />
 
-      <nav aria-label="Navegação financeira móvel" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-neutral-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden dark:border-neutral-800 dark:bg-neutral-900/95">
-        {navItems.map((item) => {
+      <nav aria-label="Navegação financeira móvel" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-neutral-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden dark:border-neutral-800 dark:bg-neutral-900/95">
+        {mobilePrimaryItems.map((item) => {
           const active = activeSubTab === item.id;
           return <button key={item.id} onClick={() => setActiveSubTab(item.id)} className={`relative flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[10px] font-bold ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-500'}`}>
-            {item.icon}<span className="max-w-full truncate">{item.label}</span>
+            {item.icon}<span className="max-w-full truncate">{item.mobileLabel}</span>
             {item.badge ? <span className="absolute right-3 top-2 rounded-full bg-rose-600 px-1.5 text-[9px] text-white">{item.badge}</span> : null}
           </button>;
         })}
+        <button onClick={() => setIsMobileMoreOpen(true)} aria-expanded={isMobileMoreOpen} className={`relative flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[10px] font-bold ${isMobileMoreActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-500'}`}>
+          <MoreHorizontal className="h-4 w-4" /><span>Mais</span>
+        </button>
       </nav>
+
+      {isMobileMoreOpen && <div className="fixed inset-0 z-[70] flex items-end bg-black/70 md:hidden" role="presentation" onClick={() => setIsMobileMoreOpen(false)}>
+        <section role="dialog" aria-modal="true" aria-labelledby="mobile-more-title" onClick={(event) => event.stopPropagation()} className="w-full rounded-t-3xl border-t border-neutral-800 bg-[#100b1a] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl">
+          <div className="flex items-center justify-between"><div><h2 id="mobile-more-title" className="text-base font-black">Mais áreas</h2><p className="text-xs text-neutral-500">Acesse outras partes das suas finanças.</p></div><button type="button" aria-label="Fechar menu" onClick={() => setIsMobileMoreOpen(false)} className="rounded-xl p-2 text-neutral-400 hover:bg-neutral-800"><X className="h-5 w-5" /></button></div>
+          <div className="mt-4 grid grid-cols-2 gap-3">{mobileMoreItems.map((item) => <button key={item.id} onClick={() => { setActiveSubTab(item.id); setIsMobileMoreOpen(false); }} className={`flex min-h-20 flex-col items-start justify-center gap-2 rounded-2xl border p-4 text-left text-sm font-bold ${activeSubTab === item.id ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300' : 'border-neutral-800 bg-neutral-900 text-neutral-200'}`}>{item.icon}<span>{item.label}</span></button>)}</div>
+        </section>
+      </div>}
 
       {isClosingOpen && <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm">
         <form onSubmit={(event) => { event.preventDefault(); saveMonthlyClosing(closingRating, closingNotes.trim()); setIsClosingOpen(false); }} className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white p-5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
