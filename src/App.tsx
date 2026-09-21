@@ -12,7 +12,7 @@ const FinanceAssistant = lazy(() => import('./components/FinanceAssistant').then
 
 const FinanceApp: React.FC = () => {
   const { user, signOut } = useAuth();
-  const { isFinanceDbConnected, isFinanceDbSaving, isFinanceHydrated, lastFinanceDbSyncedAt, forceFinanceDbSync, openTransactionModal } = useFinance();
+  const { isFinanceDbConnected, isFinanceDbSaving, isFinanceHydrated, isFinanceOffline, lastFinanceDbError, lastFinanceDbSyncedAt, forceFinanceDbSync, openTransactionModal } = useFinance();
   const [dark, setDark] = useState(() => safeStorage.getItem('fluxo_theme') === 'dark');
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
@@ -60,7 +60,7 @@ const FinanceApp: React.FC = () => {
         </main>
       ) : (
         <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
-          {!isFinanceDbConnected && <div role="alert" className="bg-amber-50 px-4 py-2 text-center text-xs font-semibold text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">Alterações pendentes de sincronização. Seus dados permanecem nesta tela.</div>}
+          {(!isFinanceDbConnected || isFinanceOffline) && <div role="alert" className="flex flex-wrap items-center justify-center gap-2 bg-amber-50 px-4 py-2 text-center text-xs font-semibold text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"><span>{isFinanceOffline ? 'Você está offline. As alterações ficam nesta tela até a conexão voltar.' : (lastFinanceDbError || 'Alterações pendentes de sincronização.')}</span>{!isFinanceOffline && <button onClick={() => lastFinanceDbError?.includes('outra sessão') ? window.location.reload() : forceFinanceDbSync()} disabled={isFinanceDbSaving} className="rounded-lg border border-amber-300 px-2 py-1 font-black disabled:opacity-50">{lastFinanceDbError?.includes('outra sessão') ? 'Recarregar dados' : 'Tentar novamente'}</button>}</div>}
           <FinanceView />
         </main>
       )}

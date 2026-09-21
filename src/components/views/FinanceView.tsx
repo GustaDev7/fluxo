@@ -15,8 +15,12 @@ import {
   Plus,
   Sparkles,
   ChevronDown,
+  CalendarDays,
+  Download,
+  LockKeyhole,
+  X,
 } from 'lucide-react';
-import { FinanceSubTab } from '../../types/finance';
+import { FinanceSubTab, MonthlyClosing } from '../../types/finance';
 
 const FinanceBudgetTab = lazy(() => import('./finance/FinanceBudgetTab').then((module) => ({ default: module.FinanceBudgetTab })));
 const FinanceBillsTab = lazy(() => import('./finance/FinanceBillsTab').then((module) => ({ default: module.FinanceBillsTab })));
@@ -32,8 +36,16 @@ export const FinanceView: React.FC = () => {
     openTransactionModal,
     openDiagnosisModal,
     overdueBills,
+    selectedMonth,
+    setSelectedMonth,
+    isSelectedMonthClosed,
+    saveMonthlyClosing,
+    exportFinanceBackup,
   } = useFinance();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [isClosingOpen, setIsClosingOpen] = useState(false);
+  const [closingRating, setClosingRating] = useState<MonthlyClosing['rating']>('good');
+  const [closingNotes, setClosingNotes] = useState('');
 
   useEffect(() => {
     if (activeSubTab === 'transactions' || activeSubTab === 'accounts') setActiveSubTab('overview');
@@ -97,6 +109,21 @@ export const FinanceView: React.FC = () => {
         </div>
         )}
 
+        <section className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-500/10 text-indigo-500"><CalendarDays className="h-5 w-5" /></span>
+            <div className="min-w-0">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-neutral-400">Competência financeira</span>
+              <input aria-label="Competência financeira" type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} className="max-w-full bg-transparent text-sm font-black capitalize outline-none" />
+            </div>
+            <span className={`hidden rounded-full px-2.5 py-1 text-[10px] font-bold sm:inline-flex ${isSelectedMonthClosed ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'}`}>{isSelectedMonthClosed ? 'Mês fechado' : 'Em acompanhamento'}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <button onClick={exportFinanceBackup} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-neutral-200 px-3 text-xs font-bold hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800"><Download className="h-4 w-4" />Backup</button>
+            <button onClick={() => setIsClosingOpen(true)} className="flex min-h-10 items-center justify-center gap-2 rounded-xl bg-neutral-900 px-3 text-xs font-bold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900"><LockKeyhole className="h-4 w-4" />{isSelectedMonthClosed ? 'Atualizar fechamento' : 'Fechar mês'}</button>
+          </div>
+        </section>
+
         {/* Sub Navigation Tabs */}
         <div className="flex items-center gap-2 overflow-x-auto border-b border-neutral-200/80 dark:border-neutral-800">
           {navItems.map((item) => {
@@ -143,8 +170,8 @@ export const FinanceView: React.FC = () => {
       <EmergencyConfigModal />
       <EmergencyDepositModal />
 
-      <nav aria-label="Navegação financeira móvel" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-neutral-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden dark:border-neutral-800 dark:bg-neutral-900/95">
-        {navItems.slice(0, 5).map((item) => {
+      <nav aria-label="Navegação financeira móvel" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-neutral-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden dark:border-neutral-800 dark:bg-neutral-900/95">
+        {navItems.map((item) => {
           const active = activeSubTab === item.id;
           return <button key={item.id} onClick={() => setActiveSubTab(item.id)} className={`relative flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[10px] font-bold ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-500'}`}>
             {item.icon}<span className="max-w-full truncate">{item.label}</span>
@@ -152,6 +179,15 @@ export const FinanceView: React.FC = () => {
           </button>;
         })}
       </nav>
+
+      {isClosingOpen && <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm">
+        <form onSubmit={(event) => { event.preventDefault(); saveMonthlyClosing(closingRating, closingNotes.trim()); setIsClosingOpen(false); }} className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white p-5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-black">Fechamento de {new Date(`${selectedMonth}-01T00:00:00Z`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</h2><p className="mt-1 text-xs text-neutral-500">Salvaremos uma fotografia dos resultados do período. Você poderá atualizar este fechamento depois.</p></div><button type="button" aria-label="Fechar" onClick={() => setIsClosingOpen(false)} className="rounded-xl p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800"><X className="h-5 w-5" /></button></div>
+          <label className="mt-5 block"><span className="mb-1 block text-xs font-bold text-neutral-600 dark:text-neutral-300">Como foi o mês?</span><select value={closingRating} onChange={(event) => setClosingRating(event.target.value as MonthlyClosing['rating'])} className="field-input"><option value="excellent">Excelente</option><option value="good">Bom</option><option value="regular">Regular</option><option value="poor">Precisa de atenção</option></select></label>
+          <label className="mt-3 block"><span className="mb-1 block text-xs font-bold text-neutral-600 dark:text-neutral-300">Observações</span><textarea value={closingNotes} onChange={(event) => setClosingNotes(event.target.value)} rows={4} placeholder="O que funcionou e o que deve mudar no próximo mês?" className="field-input resize-none" /></label>
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setIsClosingOpen(false)} className="min-h-11 rounded-xl border border-neutral-200 px-4 text-sm font-bold dark:border-neutral-700">Cancelar</button><button type="submit" className="min-h-11 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white">Salvar fechamento</button></div>
+        </form>
+      </div>}
     </div>
   );
 };

@@ -267,7 +267,7 @@ export function answerFinanceQuestion(question: string, snapshot: FinanceAssista
 
   if (/conta|venc|boleto|compromisso/.test(text)) {
     const pending = snapshot.bills
-      .filter((bill) => bill.status !== 'paid')
+      .filter((bill) => bill.status !== 'paid' && bill.dueDate.startsWith(snapshot.currentMonth))
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     if (!pending.length) return { content: 'Não há compromissos pendentes registrados.', metadata: { route: 'bills', routeLabel: 'Abrir compromissos', suggestions: ['Quanto ainda posso gastar?'] } };
     const total = pending.reduce((sum, bill) => sum + bill.amount, 0);

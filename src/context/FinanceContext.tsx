@@ -44,13 +44,15 @@ import {
   importTransactionsFromCSV,
 } from '../utils/financeUtils';
 import { useAuth } from './AuthContext';
-import { loadFinanceData, saveFinanceData } from '../lib/supabaseStore';
+import { FinanceConflictError, loadFinanceData, saveFinanceData } from '../lib/supabaseStore';
 import { getTodayDateString } from '../utils/date';
 
 interface FinanceContextType {
   // Navigation
   subTab: FinanceSubTab;
   setSubTab: (tab: FinanceSubTab) => void;
+  selectedMonth: string;
+  setSelectedMonth: (month: string) => void;
 
   // Modals
   isTransactionModalOpen: boolean;
@@ -102,6 +104,8 @@ interface FinanceContextType {
   overdueBills: FinanceBill[];
   todayBills: FinanceBill[];
   upcomingBills: FinanceBill[];
+  selectedMonthTransactions: FinanceTransaction[];
+  isSelectedMonthClosed: boolean;
 
   // Actions
   addTransaction: (tx: Omit<FinanceTransaction, 'id'>) => FinanceTransaction;
@@ -156,12 +160,15 @@ interface FinanceContextType {
   saveDiagnosis: (data: FinancialDiagnosisData) => void;
 
   exportTransactions: () => void;
+  exportFinanceBackup: () => void;
   importTransactions: (csvText: string) => number;
 
   // Database Connection & Sync
   isFinanceDbConnected: boolean;
   isFinanceHydrated: boolean;
   isFinanceDbSaving: boolean;
+  isFinanceOffline: boolean;
+  lastFinanceDbError: string | null;
   lastFinanceDbSyncedAt: string | null;
   forceFinanceDbSync: () => Promise<boolean>;
 }
@@ -170,9 +177,11 @@ const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user: authUser } = useAuth();
+  const initialMonth = getTodayDateString().slice(0, 7);
 
   // Navigation subTab
   const [subTab, setSubTab] = useState<FinanceSubTab>('overview');
+  const [selectedMonth, setSelectedMonthState] = useState(initialMonth);
 
   // Modals state
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
@@ -212,10 +221,36 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Server Database Connection & Synchronization
   const [isFinanceDbConnected, setIsFinanceDbConnected] = useState<boolean>(true);
   const [isFinanceDbSaving, setIsFinanceDbSaving] = useState<boolean>(false);
+  const [isFinanceOffline, setIsFinanceOffline] = useState<boolean>(() => typeof navigator !== 'undefined' && !navigator.onLine);
+  const [lastFinanceDbError, setLastFinanceDbError] = useState<string | null>(null);
   const [lastFinanceDbSyncedAt, setLastFinanceDbSyncedAt] = useState<string | null>(null);
   const [isHydratedFromDb, setIsHydratedFromDb] = useState<boolean>(false);
-  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const saveQueueRef = useRef<Promise<string | void>>(Promise.resolve());
+  const serverRevisionRef = useRef<string | null>(null);
   const pendingSavesRef = useRef(0);
+  const actionLocksRef = useRef(new Set<string>());
+
+  const runOnce = useCallback((key: string, action: () => void): boolean => {
+    if (actionLocksRef.current.has(key)) return false;
+    actionLocksRef.current.add(key);
+    try {
+      action();
+      return true;
+    } finally {
+      window.setTimeout(() => actionLocksRef.current.delete(key), 900);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => setIsFinanceOffline(false);
+    const handleOffline = () => setIsFinanceOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Initial load from Supabase for the authenticated user.
   useEffect(() => {
@@ -234,18 +269,25 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (data.emergencyFund) setEmergencyFund(data.emergencyFund as EmergencyFund);
           setGoals(data.goals as FinancialGoalItem[]);
           setInvestments(data.investments as InvestmentAssetItem[]);
-          if (data.budget && Object.keys(data.budget).length) setBudget(data.budget as ZeroBasedBudget);
-          setMonthlyBudgets((data.budgets || (data.budget ? [data.budget] : [])) as ZeroBasedBudget[]);
+          const loadedBudgets = (data.budgets || (data.budget ? [data.budget] : [])) as ZeroBasedBudget[];
+          const activeBudget = loadedBudgets.find((item) => item.month === initialMonth) || data.budget;
+          if (activeBudget && Object.keys(activeBudget).length) setBudget(activeBudget as ZeroBasedBudget);
+          setMonthlyBudgets(loadedBudgets);
           setMonthlyClosingHistory(data.closings as MonthlyClosing[]);
           if (data.diagnosis && Object.keys(data.diagnosis).length) setDiagnosis(data.diagnosis as FinancialDiagnosisData);
 
           setIsFinanceDbConnected(true);
+          setLastFinanceDbError(null);
+          serverRevisionRef.current = data.serverRevision;
           setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
           setIsHydratedFromDb(true);
         }
       } catch (err) {
         console.error('Could not load finance data from Supabase:', err);
-        if (isMounted) setIsFinanceDbConnected(false);
+        if (isMounted) {
+          setIsFinanceDbConnected(false);
+          setLastFinanceDbError('Não foi possível carregar seus dados financeiros.');
+        }
       }
     }
     loadFinanceFromDb();
@@ -280,14 +322,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setIsFinanceDbSaving(true);
       saveQueueRef.current = saveQueueRef.current
         .catch(() => undefined)
-        .then(() => saveFinanceData(authUser.id, financeDbPayload))
-        .then(() => {
+        .then(() => saveFinanceData(authUser.id, financeDbPayload, serverRevisionRef.current))
+        .then((revision) => {
+          if (revision) serverRevisionRef.current = revision;
           setIsFinanceDbConnected(true);
+          setLastFinanceDbError(null);
           setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
         })
         .catch((error) => {
           console.error('Could not save finance data to Supabase:', error);
           setIsFinanceDbConnected(false);
+          setLastFinanceDbError(error instanceof FinanceConflictError ? error.message : 'Existem alterações aguardando sincronização.');
         })
         .finally(() => {
           pendingSavesRef.current -= 1;
@@ -304,23 +349,38 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsFinanceDbSaving(true);
     const queuedSave = saveQueueRef.current
       .catch(() => undefined)
-      .then(() => saveFinanceData(authUser.id, financeDbPayload));
+      .then(() => saveFinanceData(authUser.id, financeDbPayload, serverRevisionRef.current));
     saveQueueRef.current = queuedSave;
 
     try {
-      await queuedSave;
+      const revision = await queuedSave;
+      if (revision) serverRevisionRef.current = revision;
       setIsFinanceDbConnected(true);
+      setLastFinanceDbError(null);
       setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
       return true;
     } catch (error) {
       console.error('Could not force finance data sync to Supabase:', error);
       setIsFinanceDbConnected(false);
+      setLastFinanceDbError(error instanceof FinanceConflictError ? error.message : 'A sincronização falhou. Verifique sua conexão e tente novamente.');
       return false;
     } finally {
       pendingSavesRef.current -= 1;
       if (pendingSavesRef.current === 0) setIsFinanceDbSaving(false);
     }
   }, [authUser, financeDbPayload, isHydratedFromDb]);
+
+  const setSelectedMonth = useCallback((month: string) => {
+    if (!/^\d{4}-\d{2}$/.test(month)) return;
+    setSelectedMonthState(month);
+    const savedBudget = monthlyBudgets.find((item) => item.month === month);
+    setBudget(savedBudget || copyBudgetToMonth(budget, month));
+  }, [budget, monthlyBudgets]);
+
+  const dateForSelectedMonth = useCallback(() => {
+    const today = getTodayDateString();
+    return today.startsWith(selectedMonth) ? today : `${selectedMonth}-01`;
+  }, [selectedMonth]);
 
   // Modals
   const openTransactionModal = useCallback((type: TransactionType = 'expense', category?: MasterCategory, options?: {
@@ -332,9 +392,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setTransactionModalInitialCategory(category);
     setTransactionModalBudgetCategoryId(options?.budgetCategoryId);
     setTransactionModalBudgetCategoryName(options?.budgetCategoryName);
-    setTransactionModalInitialDate(options?.date);
+    const today = getTodayDateString();
+    setTransactionModalInitialDate(options?.date || (today.startsWith(selectedMonth) ? today : `${selectedMonth}-01`));
     setIsTransactionModalOpen(true);
-  }, []);
+  }, [selectedMonth]);
 
   const closeTransactionModal = useCallback(() => {
     setIsTransactionModalOpen(false);
@@ -368,21 +429,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .reduce((acc, a) => acc + a.balance, 0);
   }, [accounts]);
 
-  // Current month filter
-  const currentMonthStr = useMemo(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }, []);
-
+  // One shared financial competence across every module.
   const currentMonthTransactions = useMemo(() => {
-    return transactions.filter((t) => t.date.startsWith(currentMonthStr));
-  }, [transactions, currentMonthStr]);
+    return transactions.filter((t) => t.date.startsWith(selectedMonth));
+  }, [transactions, selectedMonth]);
 
   const monthIncome = useMemo(() => {
-    return currentMonthTransactions
+    const receivedFromBudget = budget.incomeSources?.reduce((sum, source) => sum + source.receivedAmount, 0) || 0;
+    const receivedFromLedger = currentMonthTransactions
       .filter((t) => t.type === 'income')
       .reduce((acc, t) => acc + t.amount, 0);
-  }, [currentMonthTransactions]);
+    return receivedFromBudget > 0 ? money(receivedFromBudget) : money(receivedFromLedger);
+  }, [currentMonthTransactions, budget.incomeSources]);
 
   const monthExpenses = useMemo(() => {
     return currentMonthTransactions
@@ -419,12 +477,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const monthlyEssentialCosts = useMemo(() => {
     if (budget.allocations.custos_fixos > 0) return budget.allocations.custos_fixos;
     const fixedBillsTotal = bills
-      .filter((b) => b.masterCategory === 'custos_fixos')
+      .filter((b) => b.masterCategory === 'custos_fixos' && b.dueDate.startsWith(selectedMonth))
       .reduce((acc, b) => acc + b.amount, 0);
     if (fixedBillsTotal > 0) return fixedBillsTotal;
     if (diagnosis.fixedCosts > 0) return diagnosis.fixedCosts;
     return 0;
-  }, [budget, bills, diagnosis]);
+  }, [budget, bills, diagnosis, selectedMonth]);
 
   const recommendedEmergencyTarget = useMemo(() => {
     const months = emergencyFund.targetMonths || 6;
@@ -451,16 +509,21 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const todayStr = useMemo(() => getTodayDateString(), []);
 
   const overdueBills = useMemo(() => {
-    return bills.filter((b) => b.status === 'overdue' || (b.status === 'pending' && b.dueDate < todayStr));
-  }, [bills, todayStr]);
+    return bills.filter((b) => b.dueDate.startsWith(selectedMonth) && (b.status === 'overdue' || (b.status === 'pending' && b.dueDate < todayStr)));
+  }, [bills, selectedMonth, todayStr]);
 
   const todayBills = useMemo(() => {
-    return bills.filter((b) => b.status === 'pending' && b.dueDate === todayStr);
-  }, [bills, todayStr]);
+    return bills.filter((b) => b.dueDate.startsWith(selectedMonth) && b.status === 'pending' && b.dueDate === todayStr);
+  }, [bills, selectedMonth, todayStr]);
 
   const upcomingBills = useMemo(() => {
-    return bills.filter((b) => b.status === 'pending' && b.dueDate > todayStr);
-  }, [bills, todayStr]);
+    return bills.filter((b) => b.dueDate.startsWith(selectedMonth) && b.status === 'pending' && b.dueDate > todayStr);
+  }, [bills, selectedMonth, todayStr]);
+
+  const isSelectedMonthClosed = useMemo(
+    () => monthlyClosingHistory.some((closing) => closing.month === selectedMonth),
+    [monthlyClosingHistory, selectedMonth],
+  );
 
   const zeroBasedStatus = useMemo(() => {
     if (!budget.categories?.length) return calculateZeroBasedBudgetStatus(budget);
@@ -569,7 +632,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return addTransaction({
         type: parsed.type,
         amount: parsed.amount,
-        date: getTodayDateString(),
+        date: dateForSelectedMonth(),
         description: parsed.description,
         masterCategory: parsed.masterCategory,
         subcategory: parsed.subcategory,
@@ -577,7 +640,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         tags: ['rápido'],
       });
     },
-    [accounts, addTransaction]
+    [accounts, addTransaction, dateForSelectedMonth]
   );
 
   // Accounts
@@ -615,12 +678,30 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const updateBill = useCallback((id: string, updates: Partial<FinanceBill>) => {
+    const currentBill = bills.find((bill) => bill.id === id);
+    if (!currentBill) return;
+    const linkedTransaction = transactions.find((transaction) => transaction.linkedBillId === id);
+    if (updates.status === 'pending' && currentBill.status === 'paid' && linkedTransaction) {
+      deleteTransaction(linkedTransaction.id);
+      return;
+    }
+    if (linkedTransaction && updates.status !== 'pending') {
+      updateTransaction(linkedTransaction.id, {
+        amount: updates.amount ?? currentBill.amount,
+        date: updates.dueDate ?? linkedTransaction.date,
+        description: updates.title ? `Pagamento: ${updates.title}` : linkedTransaction.description,
+        masterCategory: updates.masterCategory ?? currentBill.masterCategory,
+        subcategory: updates.subcategory ?? currentBill.subcategory,
+      });
+    }
     setBills((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
-  }, []);
+  }, [bills, transactions, deleteTransaction, updateTransaction]);
 
   const deleteBill = useCallback((id: string) => {
+    const linkedTransaction = transactions.find((transaction) => transaction.linkedBillId === id);
+    if (linkedTransaction) deleteTransaction(linkedTransaction.id);
     setBills((prev) => prev.filter((b) => b.id !== id));
-  }, []);
+  }, [transactions, deleteTransaction]);
 
   const payBill = useCallback(
     (billId: string, accountId?: string, cardId?: string) => {
@@ -629,24 +710,22 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const chosenAccId = accountId || bill.accountId || accounts[0]?.id;
 
-      // Mark bill as paid
-      setBills((prev) => prev.map((b) => (b.id === billId ? { ...b, status: 'paid' } : b)));
-
-      // Record transaction
-      addTransaction({
-        type: bill.type === 'income' ? 'income' : 'expense',
-        amount: bill.amount,
-        date: getTodayDateString(),
-        description: `Pagamento: ${bill.title}`,
-        masterCategory: bill.masterCategory,
-        subcategory: bill.subcategory,
-        accountId: cardId ? undefined : chosenAccId,
-        cardId: cardId || bill.cardId,
-        linkedBillId: billId,
-        tags: ['conta-paga'],
+      runOnce(`pay-bill:${billId}`, () => {
+        addTransaction({
+          type: bill.type === 'income' ? 'income' : 'expense',
+          amount: bill.amount,
+          date: bill.dueDate.startsWith(selectedMonth) ? dateForSelectedMonth() : bill.dueDate,
+          description: `Pagamento: ${bill.title}`,
+          masterCategory: bill.masterCategory,
+          subcategory: bill.subcategory,
+          accountId: cardId ? undefined : chosenAccId,
+          cardId: cardId || bill.cardId,
+          linkedBillId: billId,
+          tags: ['conta-paga'],
+        });
       });
     },
-    [bills, transactions, accounts, addTransaction]
+    [bills, transactions, accounts, addTransaction, runOnce, selectedMonth, dateForSelectedMonth]
   );
 
   // Debts
@@ -703,6 +782,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const debt = debts.find((d) => d.id === debtId);
       if (!debt) return;
       const nextInstallment = debt.schedule?.find((item) => item.status === 'pending' || item.status === 'overdue' || item.status === 'partial');
+      const idempotencyKey = `installment:${nextInstallment?.id || debtId}:${debt.remainingInstallments}`;
+      if (debt.payments?.some((payment) => payment.idempotencyKey === idempotencyKey && payment.status === 'completed')) return;
+      if (actionLocksRef.current.has(`pay-debt:${debtId}`)) return;
+      actionLocksRef.current.add(`pay-debt:${debtId}`);
       const paymentAmount = Math.min(debt.currentBalance, debt.installmentAmount);
       const principalPaid = paymentAmount;
       const newRemaining = Math.max(0, debt.remainingInstallments - 1);
@@ -714,7 +797,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         transactionId = addTransaction({
           type: 'debt_payment',
           amount: paymentAmount,
-          date: getTodayDateString(),
+          date: dateForSelectedMonth(),
           description: `Amortização Dívida: ${debt.creditor} (${debt.totalInstallments - newRemaining}/${debt.totalInstallments})`,
           masterCategory: 'custos_fixos',
           subcategory: 'Amortização de Dívida',
@@ -732,12 +815,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           id: paymentId, installmentId: nextInstallment?.id, accountId, transactionId,
           amount: paymentAmount, principalAmount: principalPaid,
           interestAmount: 0, fineAmount: 0,
-          chargesAmount: 0, paidOn: getTodayDateString(), status: 'completed',
-          idempotencyKey: `installment:${nextInstallment?.id || debtId}:${newRemaining}`,
+          chargesAmount: 0, paidOn: dateForSelectedMonth(), status: 'completed',
+          idempotencyKey,
         }],
       });
+      window.setTimeout(() => actionLocksRef.current.delete(`pay-debt:${debtId}`), 900);
     },
-    [debts, updateDebt, addTransaction]
+    [debts, updateDebt, addTransaction, dateForSelectedMonth]
   );
 
   const unpayDebtInstallment = useCallback(
@@ -781,7 +865,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addTransaction({
           type: 'transfer',
           amount,
-          date: getTodayDateString(),
+          date: dateForSelectedMonth(),
           description: notes ? `Aporte Reserva: ${notes}` : 'Aporte na Reserva de Emergência',
           masterCategory: 'metas',
           subcategory: 'Reserva de Emergência',
@@ -792,7 +876,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setEmergencyFund((prev) => ({ ...prev, currentAmount: money(prev.currentAmount + amount) }));
       }
     },
-    [addTransaction]
+    [addTransaction, dateForSelectedMonth]
   );
 
   const withdrawFromEmergencyFund = useCallback(
@@ -803,7 +887,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addTransaction({
           type: 'income',
           amount,
-          date: getTodayDateString(),
+          date: dateForSelectedMonth(),
           description: notes ? `Resgate Reserva: ${notes}` : 'Resgate da Reserva de Emergência',
           masterCategory: 'metas',
           subcategory: 'Resgate Emergencial',
@@ -814,7 +898,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setEmergencyFund((prev) => ({ ...prev, currentAmount: money(prev.currentAmount - amount) }));
       }
     },
-    [addTransaction, emergencyFund.currentAmount]
+    [addTransaction, emergencyFund.currentAmount, dateForSelectedMonth]
   );
 
   // Financial Goals
@@ -836,19 +920,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const goal = goals.find((g) => g.id === goalId);
       if (!goal || !accounts.some((account) => account.id === accountId) || !isPositiveMoney(amount)) return;
 
-      addTransaction({
-        type: 'transfer',
-        amount,
-        date: getTodayDateString(),
-        description: `Aporte Meta: ${goal.title}`,
-        masterCategory: 'metas',
-        subcategory: goal.title,
-        accountId,
-        goalId,
-        tags: ['meta'],
-      });
+      runOnce(`goal:${goalId}:${amount}`, () => addTransaction({
+        type: 'transfer', amount, date: dateForSelectedMonth(),
+        description: `Aporte Meta: ${goal.title}`, masterCategory: 'metas',
+        subcategory: goal.title, accountId, goalId, tags: ['meta'],
+      }));
     },
-    [goals, accounts, addTransaction]
+    [goals, accounts, addTransaction, runOnce, dateForSelectedMonth]
   );
 
   // Investments & Assets
@@ -879,21 +957,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         acquiredQuantity: quantity,
       });
 
-      updateInvestmentAsset(assetId, position);
-
-      addTransaction({
-        type: 'investment',
-        amount,
-        date: getTodayDateString(),
-        description: `Aporte em Ativo: ${asset.tickerOrName}`,
-        masterCategory: 'liberdade_financeira',
-        subcategory: asset.category,
-        accountId,
-        tags: ['investimento', 'aporte'],
+      return runOnce(`investment:${assetId}:${amount}`, () => {
+        updateInvestmentAsset(assetId, position);
+        addTransaction({
+          type: 'investment', amount, date: dateForSelectedMonth(),
+          description: `Aporte em Ativo: ${asset.tickerOrName}`,
+          masterCategory: 'liberdade_financeira', subcategory: asset.category,
+          accountId, tags: ['investimento', 'aporte'],
+        });
       });
-      return true;
     },
-    [investments, accounts, updateInvestmentAsset, addTransaction]
+    [investments, accounts, updateInvestmentAsset, addTransaction, runOnce, dateForSelectedMonth]
   );
 
   // Zero-Based Budget
@@ -915,6 +989,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateBudgetPlan = useCallback((nextBudget: ZeroBasedBudget) => {
     setBudget(nextBudget);
+    setSelectedMonthState(nextBudget.month);
     setMonthlyBudgets((previous) => replaceBudgetForMonth(previous, nextBudget));
   }, []);
 
@@ -923,7 +998,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     (rating: MonthlyClosing['rating'], notes: string) => {
       const newClosing: MonthlyClosing = {
         id: `closing_${Date.now()}`,
-        month: currentMonthStr,
+        month: selectedMonth,
         rating,
         notes,
         savingsRate,
@@ -935,10 +1010,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         completedAt: new Date().toISOString(),
       };
 
-      setMonthlyClosingHistory((prev) => [newClosing, ...prev.filter((closing) => closing.month !== currentMonthStr)]);
+      setMonthlyClosingHistory((prev) => [newClosing, ...prev.filter((closing) => closing.month !== selectedMonth)]);
 
     },
-    [currentMonthStr, savingsRate, monthIncome, monthExpenses, monthInvestments, monthDebtsPaid, netWorthSummary.netWorth]
+    [selectedMonth, savingsRate, monthIncome, monthExpenses, monthInvestments, monthDebtsPaid, netWorthSummary.netWorth]
   );
 
   // Diagnosis
@@ -948,7 +1023,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       // Automatically calibrate Zero-based budget
       setBudget((previous) => {
-        const monthBudget = previous.month === currentMonthStr ? previous : copyBudgetToMonth(previous, currentMonthStr);
+        const monthBudget = previous.month === selectedMonth ? previous : copyBudgetToMonth(previous, selectedMonth);
         const nextBudget = {
           ...monthBudget,
           plannedIncome: data.monthlyIncome,
@@ -975,7 +1050,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
     },
-    [currentMonthStr]
+    [selectedMonth]
   );
 
   // Export / Import
@@ -985,10 +1060,21 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `fluxo_financas_${currentMonthStr}.csv`;
+    link.download = `fluxo_financas_${selectedMonth}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [transactions, accounts, currentMonthStr]);
+  }, [transactions, accounts, selectedMonth]);
+
+  const exportFinanceBackup = useCallback(() => {
+    const backup = { version: 1, exportedAt: new Date().toISOString(), selectedMonth, ...financeDbPayload };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `fluxo_backup_${getTodayDateString()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [financeDbPayload, selectedMonth]);
 
   const importTransactions = useCallback(
     (csvText: string): number => {
@@ -1022,6 +1108,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const value = {
     subTab,
     setSubTab,
+    selectedMonth,
+    setSelectedMonth,
     isTransactionModalOpen,
     openTransactionModal,
     closeTransactionModal,
@@ -1065,6 +1153,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     overdueBills,
     todayBills,
     upcomingBills,
+    selectedMonthTransactions: currentMonthTransactions,
+    isSelectedMonthClosed,
 
     addTransaction,
     updateTransaction,
@@ -1117,12 +1207,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     saveDiagnosis,
 
     exportTransactions,
+    exportFinanceBackup,
     importTransactions,
 
     // Database Connection & Sync
     isFinanceDbConnected,
     isFinanceHydrated: isHydratedFromDb,
     isFinanceDbSaving,
+    isFinanceOffline,
+    lastFinanceDbError,
     lastFinanceDbSyncedAt,
     forceFinanceDbSync,
   };

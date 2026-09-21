@@ -1,6 +1,12 @@
 import { supabase } from './supabase';
 
 type Row = Record<string, any>;
+export class FinanceConflictError extends Error {
+  constructor() {
+    super('Os dados foram alterados em outra sessão. Recarregue antes de sincronizar novamente.');
+    this.name = 'FinanceConflictError';
+  }
+}
 async function replaceRows(table: string, userId: string, nextRows: Row[]) {
   const { data: current, error: readError } = await supabase.from(table).select('id').eq('user_id', userId);
   if (readError) throw readError;
@@ -61,10 +67,22 @@ export async function loadFinanceData(userId: string) {
     budgets: loadedBudgets.length ? loadedBudgets : legacyBudget ? [legacyBudget] : [],
     closings: preferences.closing_history || [],
     diagnosis: preferences.diagnosis,
+    serverRevision: preferences.updated_at || null,
   };
 }
 
-export async function saveFinanceData(userId: string, data: any) {
+export async function saveFinanceData(userId: string, data: any, expectedRevision: string | null = null): Promise<string> {
+  const { data: serverPreference, error: revisionError } = await supabase
+    .from('finance_preferences')
+    .select('updated_at')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (revisionError) throw revisionError;
+  if (expectedRevision && serverPreference?.updated_at && serverPreference.updated_at !== expectedRevision) {
+    throw new FinanceConflictError();
+  }
+  const nextRevision = new Date().toISOString();
+
   await replaceRows('finance_accounts', userId, data.accounts.map((r: any) => ({ id: r.id, user_id: userId, name: r.name, institution: r.bank || null, type: r.type, balance: r.balance, initial_balance: r.initialBalance || 0, color: r.color, icon: r.icon || null, is_active: r.isActive })));
   await replaceRows('finance_cards', userId, data.creditCards.map((r: any) => ({ id: r.id, user_id: userId, linked_account_id: r.linkedAccountId || null, name: r.name, institution: r.bank || null, credit_limit: r.limit, available_limit: r.availableLimit, closing_day: r.closingDay, due_day: r.dueDay, color: r.color, current_invoice: r.currentInvoice, next_invoice: r.nextInvoice })));
   await replaceRows('finance_transactions', userId, data.transactions.map((r: any) => ({ id: r.id, user_id: userId, account_id: r.accountId || null, destination_account_id: r.destinationAccountId || null, card_id: r.cardId || null, project_id: r.projectId || null, goal_id: r.goalId || null, linked_bill_id: r.linkedBillId || null, linked_task_id: r.linkedTaskId || null, type: r.type, amount: r.amount, occurred_on: r.date, description: r.description, master_category: r.masterCategory || null, subcategory: r.subcategory || null, tags: r.tags || [], recurrence: { type: r.recurrence || 'none' }, is_recurring_instance: Boolean(r.isRecurringInstance), installments: r.installments || null, notes: r.notes || null })));
@@ -75,10 +93,8 @@ export async function saveFinanceData(userId: string, data: any) {
   await replaceRows('debt_payments', userId, data.debts.flatMap((r:any)=>(r.payments||[]).map((p:any)=>({id:p.id,user_id:userId,debt_id:r.id,installment_id:p.installmentId||null,account_id:p.accountId||null,transaction_id:p.transactionId||null,amount:p.amount,principal_amount:p.principalAmount,interest_amount:p.interestAmount,fine_amount:p.fineAmount||0,charges_amount:p.chargesAmount||0,paid_on:p.paidOn,status:p.status,idempotency_key:p.idempotencyKey}))));
   await replaceRows('finance_investments', userId, data.investments.map((r: any) => ({ id: r.id, user_id: userId, name: r.tickerOrName, institution: r.institution || null, category: r.category, quantity: r.quantity, average_price: r.averagePrice, current_price: r.currentPrice, target_allocation_percent: r.targetAllocationPercent || 0, notes: r.notes || null })));
   await replaceRows('financial_goals', userId, data.goals.map((r: any) => ({ id: r.id, user_id: userId, title: r.title, target_amount: r.targetAmount, current_amount: r.currentAmount, monthly_contribution: r.monthlyContribution || 0, deadline: r.deadline || null, category: 'metas', color: r.color, notes: r.notes || null })));
-  const { error: emergencyError } = await supabase.from('emergency_funds').upsert({ user_id: userId, target_amount: data.emergencyFund.targetAmount, current_amount: data.emergencyFund.currentAmount, monthly_contribution: data.emergencyFund.monthlyContribution, target_months: data.emergencyFund.targetMonths, updated_at: new Date().toISOString() });
+  const { error: emergencyError } = await supabase.from('emergency_funds').upsert({ user_id: userId, target_amount: data.emergencyFund.targetAmount, current_amount: data.emergencyFund.currentAmount, monthly_contribution: data.emergencyFund.monthlyContribution, target_months: data.emergencyFund.targetMonths, updated_at: nextRevision });
   if (emergencyError) throw emergencyError;
-  const { error: preferencesError } = await supabase.from('finance_preferences').upsert({ user_id: userId, installments: data.installments, budget: data.budget, closing_history: data.closings, diagnosis: data.diagnosis, updated_at: new Date().toISOString() });
-  if (preferencesError) throw preferencesError;
 
   const monthlyBudgets = data.budgets?.length ? data.budgets : data.budget ? [data.budget] : [];
   for (const monthlyBudget of monthlyBudgets) {
@@ -86,7 +102,7 @@ export async function saveFinanceData(userId: string, data: any) {
     const monthDate = `${monthlyBudget.month}-01`;
     const budgetPayload: Row = {
       user_id: userId, month: monthDate, notes: monthlyBudget.notes || null,
-      view_mode: monthlyBudget.viewMode || 'cards', advanced_mode: Boolean(monthlyBudget.advancedMode), updated_at: new Date().toISOString(),
+      view_mode: monthlyBudget.viewMode || 'cards', advanced_mode: Boolean(monthlyBudget.advancedMode), updated_at: nextRevision,
     };
     const { data: budgetRow, error: budgetError } = await supabase.from('monthly_budgets').upsert(budgetPayload, { onConflict: 'user_id,month' }).select('id').single();
     if (budgetError) throw budgetError;
@@ -119,4 +135,9 @@ export async function saveFinanceData(userId: string, data: any) {
       if (error) throw error;
     }
   }
+
+  // The preference row acts as the synchronization revision and is updated last.
+  const { data: savedPreference, error: preferencesError } = await supabase.from('finance_preferences').upsert({ user_id: userId, installments: data.installments, budget: data.budget, closing_history: data.closings, diagnosis: data.diagnosis, updated_at: nextRevision }).select('updated_at').single();
+  if (preferencesError) throw preferencesError;
+  return savedPreference.updated_at;
 }

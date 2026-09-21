@@ -33,20 +33,13 @@ const prepareBudget = (budget: ZeroBasedBudget): ZeroBasedBudget => ({
   advancedMode: budget.advancedMode || false,
 });
 
-const emptyBudgetForMonth = (month: string, viewMode: ZeroBasedBudget['viewMode']): ZeroBasedBudget => prepareBudget({
-  month,
-  plannedIncome: 0,
-  allocations: { custos_fixos: 0, conforto: 0, metas: 0, prazeres: 0, liberdade_financeira: 0, conhecimento: 0 },
-  viewMode,
-});
-
 const dateForBudgetMonth = (month: string): string => {
   const today = getTodayDateString();
   return today.startsWith(month) ? today : `${month}-01`;
 };
 
 export const FinanceBudgetTab: React.FC = () => {
-  const { budget, monthlyBudgets, updateBudgetPlan, transactions, monthlyClosingHistory, accounts, creditCards, openTransactionModal, addTransaction, updateTransaction, deleteTransaction } = useFinance();
+  const { budget, monthlyBudgets, selectedMonth, setSelectedMonth, updateBudgetPlan, transactions, monthlyClosingHistory, accounts, creditCards, openTransactionModal, addTransaction, updateTransaction, deleteTransaction } = useFinance();
   const [draft, setDraft] = useState<ZeroBasedBudget>(() => prepareBudget(budget));
   const [editing, setEditing] = useState(false);
   const [suggestion, setSuggestion] = useState(false);
@@ -59,7 +52,8 @@ export const FinanceBudgetTab: React.FC = () => {
 
   const selectMonth = (month: string) => {
     const savedBudget = monthlyBudgets.find((item) => item.month === month);
-    setDraft(savedBudget ? prepareBudget(savedBudget) : emptyBudgetForMonth(month, draft.viewMode));
+    setDraft(prepareBudget(savedBudget || copyBudgetToMonth(budget, month)));
+    setSelectedMonth(month);
     setEditing(false);
   };
 
@@ -126,7 +120,7 @@ export const FinanceBudgetTab: React.FC = () => {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div><div className="flex flex-wrap items-center gap-2"><h2 className="text-2xl font-black">Orçamento Base Zero</h2><span className="rounded-full bg-indigo-500/10 px-2.5 py-1 text-xs font-bold text-indigo-500">Cada real com seu destino</span></div><p className="mt-1 text-sm text-neutral-500">Planeje e ajuste seu orçamento. A renda prevista deve ser totalmente alocada.</p></div>
         <div className="flex flex-wrap gap-2">
-          <label className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 dark:border-neutral-700 dark:bg-neutral-900"><CalendarDays className="h-4 w-4 text-neutral-500"/><input aria-label="Mês" type="month" value={draft.month} onChange={(e) => selectMonth(e.target.value)} className="bg-transparent py-2.5 text-xs font-bold outline-none"/></label>
+          <label className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 dark:border-neutral-700 dark:bg-neutral-900"><CalendarDays className="h-4 w-4 text-neutral-500"/><input aria-label="Mês" type="month" value={selectedMonth} onChange={(e) => selectMonth(e.target.value)} className="bg-transparent py-2.5 text-xs font-bold outline-none"/></label>
           <button onClick={() => editing ? save() : setEditing(true)} className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs font-bold dark:border-neutral-700 dark:bg-neutral-900">{editing ? <Save className="h-4 w-4"/> : <Settings className="h-4 w-4"/>}{editing ? 'Salvar orçamento' : 'Configurações'}</button>
           <button onClick={() => setSuggestion(true)} className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs font-bold dark:border-neutral-700 dark:bg-neutral-900"><MoreHorizontal className="h-4 w-4"/>Mais opções</button>
         </div>

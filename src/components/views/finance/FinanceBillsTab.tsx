@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useFinance } from '../../../context/FinanceContext';
 import { formatBRL } from '../../../utils/financeUtils';
 import { FinanceBill, MasterCategory } from '../../../types/finance';
@@ -17,6 +17,7 @@ import {
   Building2,
   Pencil,
   Trash2,
+  RotateCcw,
 } from 'lucide-react';
 
 export const FinanceBillsTab: React.FC = () => {
@@ -31,6 +32,7 @@ export const FinanceBillsTab: React.FC = () => {
     overdueBills,
     todayBills,
     upcomingBills,
+    selectedMonth,
   } = useFinance();
 
   const [isAddBillOpen, setIsAddBillOpen] = useState(false);
@@ -46,6 +48,10 @@ export const FinanceBillsTab: React.FC = () => {
   const [editDueDate, setEditDueDate] = useState('');
   const [editCategory, setEditCategory] = useState<MasterCategory>('custos_fixos');
   const [editRecurrence, setEditRecurrence] = useState<'none' | 'monthly' | 'weekly' | 'yearly'>('none');
+
+  useEffect(() => {
+    setNewDueDate((current) => current.startsWith(selectedMonth) ? current : `${selectedMonth}-01`);
+  }, [selectedMonth]);
 
   const handleCreateBill = (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,7 +79,8 @@ export const FinanceBillsTab: React.FC = () => {
     const recurrenceWarning = bill.recurrence && bill.recurrence !== 'none'
       ? ' Isso também encerrará a recorrência futura.'
       : '';
-    if (window.confirm(`Excluir o compromisso “${bill.title}”?${recurrenceWarning}`)) {
+    const paymentWarning = bill.status === 'paid' ? ' O lançamento de pagamento vinculado também será revertido.' : '';
+    if (window.confirm(`Excluir o compromisso “${bill.title}”?${recurrenceWarning}${paymentWarning}`)) {
       deleteBill(bill.id);
     }
   };
@@ -102,7 +109,7 @@ export const FinanceBillsTab: React.FC = () => {
     setEditingBill(null);
   };
 
-  const paidBills = bills.filter((b) => b.status === 'paid');
+  const paidBills = bills.filter((b) => b.status === 'paid' && b.dueDate.startsWith(selectedMonth));
   const totalPendingAmount = [...overdueBills, ...todayBills, ...upcomingBills].reduce(
     (acc, b) => acc + b.amount,
     0
@@ -369,7 +376,7 @@ export const FinanceBillsTab: React.FC = () => {
             {paidBills.map((bill) => (
               <div
                 key={bill.id}
-                className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-neutral-50/50 p-3.5 text-xs dark:border-neutral-800 dark:bg-neutral-800/30"
+                className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-neutral-50/50 p-3.5 text-xs sm:flex-row sm:items-center sm:justify-between dark:border-neutral-800 dark:bg-neutral-800/30"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
@@ -384,8 +391,11 @@ export const FinanceBillsTab: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div className="font-bold text-neutral-700 dark:text-neutral-300">
-                  {formatBRL(bill.amount)}
+                <div className="flex items-center justify-between gap-2 sm:justify-end">
+                  <b className="mr-1 text-neutral-700 dark:text-neutral-300">{formatBRL(bill.amount)}</b>
+                  <button onClick={() => updateBill(bill.id, { status: 'pending' })} title="Reabrir compromisso" aria-label={`Reabrir ${bill.title}`} className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"><RotateCcw className="h-4 w-4" /></button>
+                  <button onClick={() => openEditBill(bill)} title="Editar" aria-label={`Editar ${bill.title}`} className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"><Pencil className="h-4 w-4" /></button>
+                  <button onClick={() => handleDeleteBill(bill)} title="Excluir" aria-label={`Excluir ${bill.title}`} className="rounded-lg p-2 text-rose-500 hover:bg-rose-500/10"><Trash2 className="h-4 w-4" /></button>
                 </div>
               </div>
             ))}

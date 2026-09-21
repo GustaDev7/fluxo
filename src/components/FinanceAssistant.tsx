@@ -62,7 +62,7 @@ export const FinanceAssistant: React.FC<FinanceAssistantProps> = ({ isOpen, onCl
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const currentMonth = getTodayDateString().slice(0, 7);
+  const currentMonth = finance.selectedMonth;
   const currentBudget = finance.monthlyBudgets.find((item) => item.month === currentMonth)
     || finance.budget;
 
@@ -220,7 +220,7 @@ export const FinanceAssistant: React.FC<FinanceAssistantProps> = ({ isOpen, onCl
     try {
       finance.addTransaction({
         ...action.transaction,
-        date: getTodayDateString(),
+        date: getTodayDateString().startsWith(currentMonth) ? getTodayDateString() : `${currentMonth}-01`,
         tags: ['fluxo-ia'],
       });
       await updateActionStatus(message, 'confirmed');
@@ -280,7 +280,7 @@ export const FinanceAssistant: React.FC<FinanceAssistantProps> = ({ isOpen, onCl
                   <h2 id="fluxo-assistant-title" className="text-lg font-black">Fluxo IA</h2>
                   <span className="rounded-full bg-emerald-300/20 px-2 py-0.5 text-[11px] font-bold text-emerald-100">Seus dados</span>
                 </div>
-                <p className="mt-0.5 text-sm text-indigo-100">Converse com sua vida financeira.</p>
+                <p className="mt-0.5 text-sm text-indigo-100">Analisando {new Date(`${currentMonth}-01T00:00:00Z`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })}.</p>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
