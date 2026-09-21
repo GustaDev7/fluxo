@@ -1,32 +1,25 @@
-import React, { lazy, Suspense, useEffect, useState } from 'react';
-import { Database, LogOut, Moon, RefreshCw, Sparkles, Sun, WalletCards } from 'lucide-react';
+import React, { lazy, Suspense, useState } from 'react';
+import { Database, LogOut, RefreshCw, Sparkles, WalletCards } from 'lucide-react';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { AuthScreen } from './components/AuthScreen';
 import { FluxoLogo } from './components/FluxoLogo';
 import { FinanceView } from './components/views/FinanceView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { FinanceProvider, useFinance } from './context/FinanceContext';
-import { safeStorage } from './lib/safeStorage';
 
 const FinanceAssistant = lazy(() => import('./components/FinanceAssistant').then((module) => ({ default: module.FinanceAssistant })));
 
 const FinanceApp: React.FC = () => {
   const { user, signOut } = useAuth();
   const { isFinanceDbConnected, isFinanceDbSaving, isFinanceHydrated, isFinanceOffline, lastFinanceDbError, lastFinanceDbSyncedAt, forceFinanceDbSync, openTransactionModal } = useFinance();
-  const [dark, setDark] = useState(() => safeStorage.getItem('fluxo_theme') === 'dark');
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
-    safeStorage.setItem('fluxo_theme', dark ? 'dark' : 'light');
-  }, [dark]);
-
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-neutral-50 text-neutral-950 dark:bg-neutral-950 dark:text-neutral-100">
-      <header className="z-30 flex h-16 shrink-0 items-center justify-between border-b border-neutral-200 bg-white/95 px-3 backdrop-blur sm:px-6 dark:border-neutral-800 dark:bg-neutral-900/95">
+    <div className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-[#080610] text-neutral-100">
+      <header className="z-30 flex h-16 shrink-0 items-center justify-between border-b border-violet-950/80 bg-[#100b1a]/95 px-3 backdrop-blur sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <FluxoLogo />
-          <span className="hidden h-6 w-px bg-neutral-200 sm:block dark:bg-neutral-700" />
+          <span className="hidden h-6 w-px bg-violet-900/60 sm:block" />
           <span className="hidden text-sm font-bold text-neutral-500 sm:block">Finanças pessoais</span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
@@ -39,9 +32,6 @@ const FinanceApp: React.FC = () => {
           </button>
           <button onClick={() => forceFinanceDbSync()} disabled={isFinanceDbSaving || !isFinanceHydrated} title={isFinanceDbConnected ? `Sincronizado${lastFinanceDbSyncedAt ? ` às ${lastFinanceDbSyncedAt}` : ''}` : 'Dados não sincronizados'} className={`rounded-xl p-2 disabled:opacity-50 ${isFinanceDbConnected ? 'text-emerald-600' : 'text-amber-600'}`} aria-label="Sincronizar dados financeiros">
             {isFinanceDbSaving ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Database className="h-5 w-5" />}
-          </button>
-          <button onClick={() => setDark((value) => !value)} className="rounded-xl p-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800" aria-label="Alternar tema">
-            {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
           <button onClick={() => signOut()} className="rounded-xl p-2 text-neutral-500 hover:bg-neutral-100 hover:text-rose-600 dark:hover:bg-neutral-800" aria-label={`Sair da conta ${user?.email || ''}`}>
             <LogOut className="h-5 w-5" />
