@@ -18,7 +18,7 @@ import {
   FinancialHealthScore,
 } from '../types/finance';
 import { generateSchedule } from '../domain/debtEngine';
-import { calculateBudget, copyBudgetToMonth, replaceBudgetForMonth } from '../domain/budgetEngine';
+import { calculateBudget, copyBudgetToMonth, createBudgetForMonth, replaceBudgetForMonth } from '../domain/budgetEngine';
 import { calculateInvestmentContribution, getTransactionImpact, isPositiveMoney, money } from '../domain/financeLedger';
 import {
   INITIAL_ACCOUNTS,
@@ -374,7 +374,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!/^\d{4}-\d{2}$/.test(month)) return;
     setSelectedMonthState(month);
     const savedBudget = monthlyBudgets.find((item) => item.month === month);
-    setBudget(savedBudget || copyBudgetToMonth(budget, month));
+    setBudget(savedBudget || createBudgetForMonth(budget, month));
   }, [budget, monthlyBudgets]);
 
   const dateForSelectedMonth = useCallback(() => {

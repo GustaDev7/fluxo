@@ -107,6 +107,37 @@ export function copyBudgetToMonth(budget: ZeroBasedBudget, month: string): ZeroB
   };
 }
 
+/**
+ * Starts a new competence without carrying money from another month.
+ * Recurring source names and the category structure are kept only as a convenience;
+ * every planned/received amount must be defined for the new month.
+ */
+export function createBudgetForMonth(budget: ZeroBasedBudget, month: string): ZeroBasedBudget {
+  const copy = copyBudgetToMonth(budget, month);
+  const emptyAllocations: ZeroBasedBudget['allocations'] = {
+    custos_fixos: 0,
+    conforto: 0,
+    metas: 0,
+    prazeres: 0,
+    liberdade_financeira: 0,
+    conhecimento: 0,
+  };
+
+  return {
+    ...copy,
+    month,
+    plannedIncome: 0,
+    allocations: emptyAllocations,
+    notes: '',
+    incomeSources: copy.incomeSources
+      ?.filter((source) => source.recurring)
+      .map((source) => ({ ...source, plannedAmount: 0, receivedAmount: 0 })),
+    categories: copy.categories?.map((category) => category.allocationMode === 'percentage'
+      ? { ...category, plannedAmount: 0 }
+      : { ...category, fixedAmount: 0, plannedAmount: 0, percentage: '0' }),
+  };
+}
+
 export function replaceBudgetForMonth(budgets: ZeroBasedBudget[], nextBudget: ZeroBasedBudget): ZeroBasedBudget[] {
   return [...budgets.filter((budget) => budget.month !== nextBudget.month), nextBudget]
     .sort((a, b) => b.month.localeCompare(a.month));

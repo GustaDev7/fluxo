@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { amountFromPercentage, budgetCategoryTag, calculateBudget, copyBudgetToMonth, percentageFromAmount, replaceBudgetForMonth, resolveCategory, transactionMatchesBudgetCategory } from './budgetEngine';
+import { amountFromPercentage, budgetCategoryTag, calculateBudget, copyBudgetToMonth, createBudgetForMonth, percentageFromAmount, replaceBudgetForMonth, resolveCategory, transactionMatchesBudgetCategory } from './budgetEngine';
 import { BudgetCategory, FinanceTransaction, ZeroBasedBudget } from '../types/finance';
 
 const category = (overrides: Partial<BudgetCategory> = {}): BudgetCategory => ({
@@ -39,6 +39,30 @@ describe('budgetEngine', () => {
     expect(copy.incomeSources?.[0].id).not.toBe('income-sep');
     expect(copy.incomeSources?.[0].receivedAmount).toBe(0);
     expect(copy.categories?.[1].parentId).toBe(copy.categories?.[0].id);
+  });
+  it('inicia um mês novo sem replicar renda planejada ou recebida', () => {
+    const september = {
+      ...budget([
+        category({ id: 'percentual', allocationMode: 'percentage', percentage: '40', plannedAmount: 1840 }),
+        category({ id: 'fixa', allocationMode: 'fixed', fixedAmount: 900, plannedAmount: 900 }),
+      ]),
+      month: '2026-09',
+      incomeSources: [
+        { id: 'salary', name: 'Salário variável', type: 'salary' as const, plannedAmount: 4600, receivedAmount: 5100, recurring: true },
+        { id: 'extra', name: 'Renda extra', type: 'extra' as const, plannedAmount: 800, receivedAmount: 800, recurring: false },
+      ],
+    };
+
+    const october = createBudgetForMonth(september, '2026-10');
+
+    expect(october.month).toBe('2026-10');
+    expect(october.plannedIncome).toBe(0);
+    expect(october.incomeSources).toHaveLength(1);
+    expect(october.incomeSources?.[0]).toMatchObject({ name: 'Salário variável', plannedAmount: 0, receivedAmount: 0 });
+    expect(october.incomeSources?.[0].id).not.toBe('salary');
+    expect(october.categories?.find((item) => item.id !== 'percentual' && item.allocationMode === 'fixed')?.fixedAmount).toBe(0);
+    expect(calculateBudget(october).plannedIncome).toBe(0);
+    expect(september.incomeSources[0].receivedAmount).toBe(5100);
   });
   it('vincula despesas a uma categoria personalizada sem misturar com a categoria padrão', () => {
     const custom = category({ id: 'dizimos', masterCategory: undefined });

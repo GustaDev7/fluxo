@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowDownUp, BarChart3, CalendarDays, CheckCircle2, CircleDollarSign, Copy, LayoutGrid, Lightbulb, List, MoreHorizontal, Pencil, Plus, ReceiptText, Save, Search, Settings, Sparkles, Table2, Trash2, X } from 'lucide-react';
 import { useFinance } from '../../../context/FinanceContext';
 import { BudgetCategory, BudgetIncomeSource, CreditCard, FinanceAccount, FinanceTransaction, MasterCategory, ZeroBasedBudget } from '../../../types/finance';
-import { calculateBudget, copyBudgetToMonth, resolveCategory, transactionMatchesBudgetCategory } from '../../../domain/budgetEngine';
+import { calculateBudget, copyBudgetToMonth, createBudgetForMonth, resolveCategory, transactionMatchesBudgetCategory } from '../../../domain/budgetEngine';
 import { MASTER_CATEGORY_CONFIG, formatBRL } from '../../../utils/financeUtils';
 import { getTodayDateString } from '../../../utils/date';
 
@@ -52,7 +52,7 @@ export const FinanceBudgetTab: React.FC = () => {
 
   const selectMonth = (month: string) => {
     const savedBudget = monthlyBudgets.find((item) => item.month === month);
-    setDraft(prepareBudget(savedBudget || copyBudgetToMonth(budget, month)));
+    setDraft(prepareBudget(savedBudget || createBudgetForMonth(budget, month)));
     setSelectedMonth(month);
     setEditing(false);
   };
@@ -133,6 +133,7 @@ export const FinanceBudgetTab: React.FC = () => {
         ].map(([label, value, detail, Icon, color]) => { const MetricIcon = Icon as typeof CircleDollarSign; return <div key={label as string} className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"><div className="flex items-start gap-3"><span className={`rounded-xl p-2.5 ${color}`}><MetricIcon className="h-5 w-5"/></span><div><span className="text-xs text-neutral-500">{label as string}</span><strong className="mt-1 block text-xl">{value as string}</strong><span className="text-xs text-neutral-500">{detail as string}</span></div></div></div>; })}
         <div className={`flex items-start gap-3 rounded-2xl border p-4 ${result.status === 'balanced' ? 'border-emerald-500/40 bg-emerald-500/5' : result.status === 'under' ? 'border-amber-500/40 bg-amber-500/5' : 'border-rose-500/40 bg-rose-500/5'}`}>{result.status === 'balanced' ? <Lightbulb className="h-5 w-5 shrink-0 text-amber-400"/> : <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500"/>}<div><strong className="text-sm">{result.status === 'balanced' ? 'Orçamento equilibrado!' : result.status === 'under' ? 'Ainda há renda para distribuir' : 'Orçamento acima da renda'}</strong><p className="mt-1 text-xs leading-relaxed text-neutral-500">{result.status === 'balanced' ? 'Sua renda está 100% alocada. Continue acompanhando os valores realizados.' : statusText}</p></div></div>
       </div>
+      {!monthlyBudgets.some((item) => item.month === draft.month) && <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs font-semibold text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-300">Esta competência ainda não foi salva. As fontes recorrentes aparecem apenas como referência, com renda prevista e recebida zeradas.</div>}
     </section>
 
     {editing && <section className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
