@@ -138,6 +138,22 @@ export function createBudgetForMonth(budget: ZeroBasedBudget, month: string): Ze
   };
 }
 
+export function ensureBudgetForMonth(
+  budgets: ZeroBasedBudget[],
+  currentBudget: ZeroBasedBudget,
+  month: string,
+): { budget: ZeroBasedBudget; budgets: ZeroBasedBudget[]; created: boolean } {
+  const savedBudget = budgets.find((item) => item.month === month);
+  if (savedBudget) return { budget: savedBudget, budgets, created: false };
+
+  const newBudget = createBudgetForMonth(currentBudget, month);
+  return {
+    budget: newBudget,
+    budgets: replaceBudgetForMonth(budgets, newBudget),
+    created: true,
+  };
+}
+
 export function replaceBudgetForMonth(budgets: ZeroBasedBudget[], nextBudget: ZeroBasedBudget): ZeroBasedBudget[] {
   return [...budgets.filter((budget) => budget.month !== nextBudget.month), nextBudget]
     .sort((a, b) => b.month.localeCompare(a.month));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { amountFromPercentage, budgetCategoryTag, calculateBudget, copyBudgetToMonth, createBudgetForMonth, percentageFromAmount, replaceBudgetForMonth, resolveCategory, transactionMatchesBudgetCategory } from './budgetEngine';
+import { amountFromPercentage, budgetCategoryTag, calculateBudget, copyBudgetToMonth, createBudgetForMonth, ensureBudgetForMonth, percentageFromAmount, replaceBudgetForMonth, resolveCategory, transactionMatchesBudgetCategory } from './budgetEngine';
 import { BudgetCategory, FinanceTransaction, ZeroBasedBudget } from '../types/finance';
 
 const category = (overrides: Partial<BudgetCategory> = {}): BudgetCategory => ({
@@ -63,6 +63,28 @@ describe('budgetEngine', () => {
     expect(october.categories?.find((item) => item.id !== 'percentual' && item.allocationMode === 'fixed')?.fixedAmount).toBe(0);
     expect(calculateBudget(october).plannedIncome).toBe(0);
     expect(september.incomeSources[0].receivedAmount).toBe(5100);
+  });
+  it('registra a nova competência como orçamento independente ao trocar de mês', () => {
+    const september = {
+      ...budget([]),
+      month: '2026-09',
+      incomeSources: [
+        { id: 'salary-september', name: 'Salário', type: 'salary' as const, plannedAmount: 5120, receivedAmount: 4900, recurring: true },
+      ],
+    };
+
+    const octoberState = ensureBudgetForMonth([september], september, '2026-10');
+
+    expect(octoberState.created).toBe(true);
+    expect(octoberState.budget.month).toBe('2026-10');
+    expect(calculateBudget(octoberState.budget).plannedIncome).toBe(0);
+    expect(octoberState.budgets).toHaveLength(2);
+    expect(octoberState.budgets.find((item) => item.month === '2026-09')?.incomeSources?.[0].plannedAmount).toBe(5120);
+    expect(octoberState.budgets.find((item) => item.month === '2026-10')?.incomeSources?.[0].plannedAmount).toBe(0);
+
+    const septemberState = ensureBudgetForMonth(octoberState.budgets, octoberState.budget, '2026-09');
+    expect(septemberState.created).toBe(false);
+    expect(septemberState.budget.incomeSources?.[0].plannedAmount).toBe(5120);
   });
   it('vincula despesas a uma categoria personalizada sem misturar com a categoria padrão', () => {
     const custom = category({ id: 'dizimos', masterCategory: undefined });
