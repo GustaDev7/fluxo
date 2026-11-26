@@ -97,6 +97,7 @@ export const FinanceBillsTab: React.FC = () => {
 
   const openEditBill = (bill: FinanceBill) => {
     setAmountError('');
+    setIsAddBillOpen(false);
     setEditingBill(bill);
     setEditTitle(bill.title);
     setEditAmount(String(bill.amount).replace('.', ','));
@@ -152,7 +153,7 @@ export const FinanceBillsTab: React.FC = () => {
         </div>
 
         <button
-          onClick={() => { setAmountError(''); setIsAddBillOpen(true); }}
+          onClick={() => { setAmountError(''); setEditingBill(null); setIsAddBillOpen(true); }}
           className="flex items-center gap-1.5 rounded-2xl bg-neutral-900 px-4 py-2 text-xs font-bold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 transition-colors shadow-sm self-start sm:self-auto"
         >
           <Plus className="h-4 w-4" />
@@ -369,7 +370,7 @@ export const FinanceBillsTab: React.FC = () => {
 
         {upcomingBills.length === 0 ? (
           <div className="rounded-2xl border border-neutral-200 bg-white p-6 text-center text-xs text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900">
-            Nenhuma conta a vencer cadastrada para os próximos dias.
+            Nenhuma conta a vencer nesta competência.
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -392,7 +393,7 @@ export const FinanceBillsTab: React.FC = () => {
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
             <CheckCircle2 className="h-4 w-4" />
             <h4 className="text-xs font-bold uppercase tracking-wider">
-              Contas Pagas no Mês ({paidBills.length})
+              Contas pagas desta competência ({paidBills.length})
             </h4>
           </div>
 
