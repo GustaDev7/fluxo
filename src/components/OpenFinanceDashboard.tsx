@@ -40,6 +40,15 @@ function Ledger({ rows, empty }: { rows: MoneyRow[]; empty: string }) {
 
 const shortDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.split('-').reverse().join('/') : '';
 
+function providerDate(value?: string) {
+  if (!value) return '';
+  const day = shortDate(value);
+  if (day) return day;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+}
+
 function accountRows(data?: BelvoData, group?: string): MoneyRow[] {
   return (data?.accounts ?? []).filter(row => row.group === group).map(row => ({
     name: row.name, detail: [row.institution, row.lastFour && 'Final ' + row.lastFour, row.balanceLabel].filter(Boolean).join(' · '),
@@ -97,10 +106,15 @@ export function OpenFinanceDashboard() {
     name: row.name, amount: row.balance, currency: row.currency,
     detail: [row.institution, row.balanceLabel, shortDate(row.date)].filter(Boolean).join(' · '),
   }));
-  const reserves = (data?.accounts ?? []).flatMap(account => (account.reserves ?? []).map(reserve => ({
-    name: reserve.name, amount: reserve.balance, currency: reserve.currency,
-    detail: [account.institution, account.name].filter(Boolean).join(' · '),
-  })));
+  const reserves = (data?.accounts ?? []).flatMap(account => (account.reserves ?? []).map(reserve => {
+    const balanceAt = providerDate(reserve.balanceAt);
+    const collectedAt = providerDate(reserve.collectedAt);
+    const date = balanceAt ? 'Saldo de ' + balanceAt : collectedAt ? 'Coletado pela Belvo em ' + collectedAt : 'Data do saldo indisponível';
+    return {
+      name: reserve.name, amount: reserve.balance, currency: reserve.currency,
+      detail: [account.institution, date].filter(Boolean).join(' · '),
+    };
+  }));
   const missingMercadoPagoReserves = data?.accounts.some(account =>
     account.institution === 'Mercado Pago' && account.group !== 'card' && account.group !== 'debt') &&
     !data.accounts.some(account => account.institution === 'Mercado Pago' &&
@@ -144,7 +158,7 @@ export function OpenFinanceDashboard() {
         </div>
       </div>
       <header className="of-heading">
-        <div><h1>{active.label}</h1><p>{update ? 'Última consulta em ' + update : panel === 'goals' ? 'Planeje o que quer alcançar.' : 'Acompanhe suas finanças conectadas.'}</p></div>
+        <div><h1>{active.label}</h1><p>{update ? 'Última consulta à Belvo em ' + update : panel === 'goals' ? 'Planeje o que quer alcançar.' : 'Acompanhe suas finanças conectadas.'}</p></div>
         {panel !== 'goals' && <label className="of-month"><CalendarDays size={18} /><input aria-label="Mês do extrato" type="month" value={session.month} onChange={event => session.chooseMonth(event.target.value)} /></label>}
       </header>
 
@@ -188,6 +202,7 @@ export function OpenFinanceDashboard() {
       {panel === 'investments' && <div className="of-overview-grid">
         <section className="of-panel">
           <div className="of-section-heading"><h2>Caixinhas e Cofrinhos</h2><strong>{totals(reserves, row => row.amount)}</strong></div>
+          {!!reserves.length && <p className="of-muted">Total das reservas recebidas. A data do saldo depende do que o banco compartilha pelo Open Finance.</p>}
           <Ledger rows={reserves} empty={missingMercadoPagoReserves ? 'O saldo dos Cofrinhos do Mercado Pago não veio nesta consulta.' : 'Nenhuma reserva informada pela Belvo nesta consulta.'} />
           {!!reserves.length && missingMercadoPagoReserves && <p className="of-muted">O saldo dos Cofrinhos do Mercado Pago não veio nesta consulta.</p>}
         </section>

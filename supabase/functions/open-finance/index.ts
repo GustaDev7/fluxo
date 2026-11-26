@@ -103,10 +103,19 @@ function belvoInstitution(value: unknown) {
   return name;
 }
 
+function belvoTimestamp(value: unknown): string | undefined {
+  const date = label(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(date) && Number.isFinite(Date.parse(date))) return new Date(date).toISOString();
+}
+
 function belvoReserves(account: BelvoRecord, balance: BelvoRecord | undefined, institution: string, currency: string) {
   const rows = field(balance ?? {}, 'reserved_balances', 'reservedBalances') ??
     field(account, 'reserved_balances', 'reservedBalances');
   if (!Array.isArray(rows)) return undefined;
+  const accountBalanceAt = belvoTimestamp(field(balance ?? {}, 'last_updated_at', 'lastUpdatedAt'));
+  const collectedAt = belvoTimestamp(field(balance ?? {}, 'collected_at', 'collectedAt') ??
+    field(account, 'collected_at', 'collectedAt'));
   const seen = new Set<string>();
   return rows.flatMap(value => {
     const reserve = record(value);
@@ -115,6 +124,7 @@ function belvoReserves(account: BelvoRecord, balance: BelvoRecord | undefined, i
     if (id && seen.has(id)) return [];
     if (id) seen.add(id);
     const name = label(reserve.name) || (institution === 'Mercado Pago' ? 'Cofrinho' : 'Reserva');
+    const balanceAt = belvoTimestamp(field(reserve, 'last_updated_at', 'lastUpdatedAt', 'reference_date', 'referenceDate')) ?? accountBalanceAt;
     const amounts = Array.isArray(reserve.amounts) ? reserve.amounts.flatMap(value => {
       const amount = record(value);
       if (!amount) return [];
@@ -122,9 +132,11 @@ function belvoReserves(account: BelvoRecord, balance: BelvoRecord | undefined, i
         name,
         currency: currencyCode(amount.currency ?? currency),
         balance: moneyValue(field(amount, 'amount', 'value')),
+        balanceAt: belvoTimestamp(field(amount, 'last_updated_at', 'lastUpdatedAt', 'reference_date', 'referenceDate')) ?? balanceAt,
+        collectedAt,
       }];
     }) : [];
-    return amounts.length ? amounts : [{ name, currency, balance: null }];
+    return amounts.length ? amounts : [{ name, currency, balance: null, balanceAt, collectedAt }];
   });
 }
 
