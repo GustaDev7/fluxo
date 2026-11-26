@@ -97,6 +97,14 @@ export function OpenFinanceDashboard() {
     name: row.name, amount: row.balance, currency: row.currency,
     detail: [row.institution, row.balanceLabel, shortDate(row.date)].filter(Boolean).join(' · '),
   }));
+  const reserves = (data?.accounts ?? []).flatMap(account => (account.reserves ?? []).map(reserve => ({
+    name: reserve.name, amount: reserve.balance, currency: reserve.currency,
+    detail: [account.institution, account.name].filter(Boolean).join(' · '),
+  })));
+  const missingMercadoPagoReserves = data?.accounts.some(account =>
+    account.institution === 'Mercado Pago' && account.group !== 'card' && account.group !== 'debt') &&
+    !data.accounts.some(account => account.institution === 'Mercado Pago' &&
+      account.reserves?.some(reserve => reserve.balance !== null));
   const expenses = (data?.transactions ?? []).filter(row => row.direction === 'out');
   const expenseRows = expenses.map(row => ({
     name: row.description, detail: shortDate(row.date), amount: -row.amount, currency: row.currency,
@@ -116,7 +124,7 @@ export function OpenFinanceDashboard() {
   const tiles = [
     { id: 'balances', label: 'Saldo disponível', value: cashTotal, icon: Wallet },
     { id: 'expenses', label: 'Saídas no extrato', value: expenseTotal, icon: ArrowDownLeft },
-    { id: 'investments', label: 'Investimentos · valor líquido', value: investmentTotal, icon: LineChart },
+    { id: 'investments', label: 'Investimentos recebidos · valor líquido', value: investmentTotal, icon: LineChart },
     { id: 'goals', label: 'Metas ativas', value: String(goals.length), icon: Target },
   ] as const;
 
@@ -158,7 +166,7 @@ export function OpenFinanceDashboard() {
             <Ledger rows={expenseRows.slice(0, 6)} empty="Sem saídas retornadas para o mês." />
           </section>
           <section className="of-panel"><div className="of-section-heading"><h2>Investimentos</h2><button className="of-link" onClick={() => setPanel('investments')}>Ver posições</button></div>
-            <Ledger rows={investments.slice(0, 4)} empty="Sem posições retornadas pela Belvo." />
+            <Ledger rows={[...reserves, ...investments].slice(0, 4)} empty="Sem reservas ou posições retornadas pela Belvo." />
           </section>
         </div>
       </>}
@@ -177,11 +185,19 @@ export function OpenFinanceDashboard() {
         </section>
       </div>}
       {panel === 'goals' && <Goals />}
-      {panel === 'investments' && <section className="of-panel"><div className="of-section-heading"><h2>Dinheiro guardado e investimentos</h2><strong>{investmentTotal}</strong></div>
-        <p className="of-muted">As posições mostram o nome informado pelo banco. Caixinhas podem aparecer como RDB ou fundo.</p>
-        <Ledger rows={investments} empty="Sem posições retornadas pela Belvo." />
-        {!!data?.investmentFailures && <p className="of-muted">Algumas instituições não retornaram posições de investimento.</p>}
-      </section>}
+      {panel === 'investments' && <div className="of-overview-grid">
+        <section className="of-panel">
+          <div className="of-section-heading"><h2>Caixinhas e Cofrinhos</h2><strong>{totals(reserves, row => row.amount)}</strong></div>
+          <Ledger rows={reserves} empty={missingMercadoPagoReserves ? 'O saldo dos Cofrinhos do Mercado Pago não veio nesta consulta.' : 'Nenhuma reserva informada pela Belvo nesta consulta.'} />
+          {!!reserves.length && missingMercadoPagoReserves && <p className="of-muted">O saldo dos Cofrinhos do Mercado Pago não veio nesta consulta.</p>}
+        </section>
+        <section className="of-panel">
+          <div className="of-section-heading"><h2>Investimentos recebidos</h2><strong>{investmentTotal}</strong></div>
+          <p className="of-muted">Total pelo valor líquido informado. Caixinhas aplicadas pelo banco podem aparecer como RDB ou fundo.</p>
+          <Ledger rows={investments} empty="Sem posições retornadas pela Belvo." />
+          {!!data?.investmentFailures && <p className="of-muted">Algumas instituições não retornaram posições de investimento.</p>}
+        </section>
+      </div>}
     </main>
   </div>;
 }

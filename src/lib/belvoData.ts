@@ -16,6 +16,7 @@ export interface BelvoAccount extends BelvoProduct {
   group?: typeof belvoAccountSections[number]['id'];
   lastFour?: string | null;
   balanceLabel?: string;
+  reserves?: { name: string; currency: string; balance: number | null }[];
 }
 
 export interface BelvoInvestment extends BelvoProduct {

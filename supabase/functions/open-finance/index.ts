@@ -103,6 +103,31 @@ function belvoInstitution(value: unknown) {
   return name;
 }
 
+function belvoReserves(account: BelvoRecord, balance: BelvoRecord | undefined, institution: string, currency: string) {
+  const rows = field(balance ?? {}, 'reserved_balances', 'reservedBalances') ??
+    field(account, 'reserved_balances', 'reservedBalances');
+  if (!Array.isArray(rows)) return undefined;
+  const seen = new Set<string>();
+  return rows.flatMap(value => {
+    const reserve = record(value);
+    if (!reserve) return [];
+    const id = label(reserve.identification);
+    if (id && seen.has(id)) return [];
+    if (id) seen.add(id);
+    const name = label(reserve.name) || (institution === 'Mercado Pago' ? 'Cofrinho' : 'Reserva');
+    const amounts = Array.isArray(reserve.amounts) ? reserve.amounts.flatMap(value => {
+      const amount = record(value);
+      if (!amount) return [];
+      return [{
+        name,
+        currency: currencyCode(amount.currency ?? currency),
+        balance: moneyValue(field(amount, 'amount', 'value')),
+      }];
+    }) : [];
+    return amounts.length ? amounts : [{ name, currency, balance: null }];
+  });
+}
+
 function belvoAccount(account: BelvoRecord, connection: BelvoRecord) {
   const providerName = label(field(account, 'name', 'display_name', 'displayName'));
   const institution = belvoInstitution(connection.institution) || belvoInstitution(account.institution);
@@ -112,7 +137,7 @@ function belvoAccount(account: BelvoRecord, connection: BelvoRecord) {
     (/^gold$/i.test(providerName) && /nubank|nu pagamentos/i.test(institution));
   const isDebt = /loan|financing|financiamento|emprestimo/.test(kind) ||
     /credito pessoal|crédito pessoal|financiamento/i.test(providerName);
-  const group = isCard ? 'card' : isDebt ? 'debt' : /checking|savings|deposit|payment account|conta corrente|poupanca|conta de pagamento/.test(kind) ? 'cash' : 'other';
+  const group = isCard ? 'card' : isDebt ? 'debt' : /checking|savings|deposit|prepaid|payment account|conta corrente|poupanca|conta de pagamento/.test(kind) ? 'cash' : 'other';
   const type = {
     card: 'Cartão de crédito',
     debt: /financ/i.test(kind + ' ' + providerName) ? 'Financiamento' : 'Empréstimo',
@@ -121,6 +146,7 @@ function belvoAccount(account: BelvoRecord, connection: BelvoRecord) {
   }[group];
   const balance = field(account, 'balance', 'current_balance', 'currentBalance');
   const reported = record(balance);
+  const currency = currencyCode(field(account, 'currency', 'currency_code', 'currencyCode') ?? reported?.currency);
   const available = group === 'cash' ? moneyValue(reported?.available) : null;
   const shown = available ?? moneyValue(reported?.current ?? reported?.amount ?? reported?.available ?? balance);
   const finalDigits = group === 'card' ? label(field(account, 'last_four', 'lastFour', 'last_four_digits', 'last4')) : '';
@@ -129,7 +155,8 @@ function belvoAccount(account: BelvoRecord, connection: BelvoRecord) {
     name: /^gold$/i.test(name) ? 'Gold' : name, institution, group, type,
     lastFour: /^\d{4}$/.test(finalDigits) ? finalDigits : null, balance: shown,
     balanceLabel: available !== null ? 'Saldo disponível' : group === 'cash' ? 'Saldo informado' : 'Valor informado',
-    currency: currencyCode(field(account, 'currency', 'currency_code', 'currencyCode') ?? reported?.currency),
+    currency,
+    reserves: isCard || isDebt ? undefined : belvoReserves(account, reported, institution, currency),
   };
 }
 
