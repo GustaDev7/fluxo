@@ -7,7 +7,6 @@ import { EmergencyConfigModal } from './finance/EmergencyConfigModal';
 import { EmergencyDepositModal } from './finance/EmergencyDepositModal';
 import {
   LayoutDashboard,
-  Wallet,
   CalendarClock,
   ShieldAlert,
   Target,
@@ -21,7 +20,6 @@ import {
 } from 'lucide-react';
 import { FinanceSubTab, MonthlyClosing } from '../../types/finance';
 
-const FinanceBudgetTab = lazy(() => import('./finance/FinanceBudgetTab').then((module) => ({ default: module.FinanceBudgetTab })));
 const FinanceBillsTab = lazy(() => import('./finance/FinanceBillsTab').then((module) => ({ default: module.FinanceBillsTab })));
 const FinanceDebtsTab = lazy(() => import('./finance/FinanceDebtsTab').then((module) => ({ default: module.FinanceDebtsTab })));
 const FinanceEmergencyTab = lazy(() => import('./finance/FinanceEmergencyTab').then((module) => ({ default: module.FinanceEmergencyTab })));
@@ -60,14 +58,13 @@ export const FinanceView: React.FC = () => {
 
   const navItems: { id: FinanceSubTab; label: string; mobileLabel: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'Visão geral', mobileLabel: 'Início', icon: <LayoutDashboard size={19} aria-hidden="true" /> },
-    { id: 'budget', label: 'Orçamento', mobileLabel: 'Orçamento', icon: <Wallet size={19} aria-hidden="true" /> },
     { id: 'bills', label: 'Compromissos', mobileLabel: 'Agenda', icon: <CalendarClock size={19} aria-hidden="true" />, badge: overdueBills.length || undefined },
     { id: 'goals', label: 'Metas', mobileLabel: 'Metas', icon: <Target size={19} aria-hidden="true" /> },
     { id: 'debts', label: 'Dívidas', mobileLabel: 'Dívidas', icon: <ShieldAlert size={19} aria-hidden="true" /> },
     { id: 'investments', label: 'Investimentos', mobileLabel: 'Investir', icon: <TrendingUp size={19} aria-hidden="true" /> },
   ];
-  const mobilePrimaryItems = navItems.filter((item) => ['overview', 'budget', 'bills', 'goals'].includes(item.id));
-  const mobileMoreItems = navItems.filter((item) => ['debts', 'investments'].includes(item.id));
+  const mobilePrimaryItems = navItems.filter((item) => item.id !== 'investments');
+  const mobileMoreItems = navItems.filter((item) => item.id === 'investments');
   const isMobileMoreActive = mobileMoreItems.some((item) => item.id === activeSubTab);
 
   return (
@@ -105,7 +102,6 @@ export const FinanceView: React.FC = () => {
             <div className="fx-section-content">
               {activeSubTab === 'overview' && <FinanceOverviewTab />}
               {activeSubTab === 'emergency' && <FinanceEmergencyTab />}
-              {activeSubTab === 'budget' && <FinanceBudgetTab />}
               {activeSubTab === 'bills' && <FinanceBillsTab />}
               {activeSubTab === 'debts' && <FinanceDebtsTab />}
               {activeSubTab === 'goals' && <FinanceGoalsTab />}

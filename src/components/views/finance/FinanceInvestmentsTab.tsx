@@ -234,17 +234,17 @@ export const FinanceInvestmentsTab: React.FC = () => {
               Central de aportes · <span className="capitalize">{monthLabel}</span>
             </h4>
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              {targetAporte > 0 ? `Meta do orçamento: ${formatBRL(targetAporte)}` : 'Defina a meta de investimentos no orçamento'}
+              {targetAporte > 0 ? `Meta registrada: ${formatBRL(targetAporte)}` : 'Aportes registrados no mês'}
             </p>
           </div>
           <div className="text-right">
             <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
-              {formatBRL(monthInvestments)} / {formatBRL(targetAporte)}
+              {formatBRL(monthInvestments)}{targetAporte > 0 && ' / ' + formatBRL(targetAporte)}
             </span>
           </div>
         </div>
 
-        <div className="space-y-1.5">
+        {targetAporte > 0 && <div className="space-y-1.5">
           <div className="flex justify-between text-[11px] text-neutral-500">
             <span>Aporte Realizado</span>
             <span className="font-bold text-neutral-800 dark:text-neutral-200">{aporteProgress}%</span>
@@ -255,7 +255,7 @@ export const FinanceInvestmentsTab: React.FC = () => {
               style={{ width: `${aporteProgress}%` }}
             />
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* 3. Portfolio Allocation & Rebalancing Recommendation */}
