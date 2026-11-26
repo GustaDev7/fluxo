@@ -18,10 +18,14 @@ import {
   CalendarDays,
   Download,
   LockKeyhole,
+  Landmark,
   MoreHorizontal,
   X,
 } from 'lucide-react';
 import { FinanceSubTab, MonthlyClosing } from '../../types/finance';
+import type { Workspace } from '../../lib/workspaces';
+
+const BankTab = lazy(() => import('./finance/BankTab').then(module => ({ default: module.BankTab })));
 
 const FinanceBudgetTab = lazy(() => import('./finance/FinanceBudgetTab').then((module) => ({ default: module.FinanceBudgetTab })));
 const FinanceBillsTab = lazy(() => import('./finance/FinanceBillsTab').then((module) => ({ default: module.FinanceBillsTab })));
@@ -30,7 +34,7 @@ const FinanceEmergencyTab = lazy(() => import('./finance/FinanceEmergencyTab').t
 const FinanceGoalsTab = lazy(() => import('./finance/FinanceGoalsTab').then((module) => ({ default: module.FinanceGoalsTab })));
 const FinanceInvestmentsTab = lazy(() => import('./finance/FinanceInvestmentsTab').then((module) => ({ default: module.FinanceInvestmentsTab })));
 
-export const FinanceView: React.FC = () => {
+export const FinanceView: React.FC<{ workspace: Workspace; couple?: Workspace }> = ({ workspace, couple }) => {
   const {
     subTab: activeSubTab,
     setSubTab: setActiveSubTab,
@@ -55,18 +59,20 @@ export const FinanceView: React.FC = () => {
 
   const navItems: { id: FinanceSubTab; label: string; mobileLabel: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'Visão Geral', mobileLabel: 'Início', icon: <PieChart className="h-4 w-4" /> },
+    { id: 'banks', label: 'Bancos e extratos', mobileLabel: 'Bancos', icon: <Landmark className="h-4 w-4" /> },
     { id: 'budget', label: 'Orçamento', mobileLabel: 'Orçamento', icon: <DollarSign className="h-4 w-4" /> },
     { id: 'bills', label: 'Compromissos', mobileLabel: 'Agenda', icon: <CalendarClock className="h-4 w-4" />, badge: overdueBills.length || undefined },
     { id: 'goals', label: 'Metas', mobileLabel: 'Metas', icon: <Target className="h-4 w-4" /> },
     { id: 'debts', label: 'Dívidas', mobileLabel: 'Dívidas', icon: <ShieldAlert className="h-4 w-4" /> },
     { id: 'investments', label: 'Investimentos', mobileLabel: 'Investir', icon: <TrendingUp className="h-4 w-4" /> },
   ];
-  const mobilePrimaryItems = navItems.filter((item) => ['overview', 'budget', 'bills', 'goals'].includes(item.id));
-  const mobileMoreItems = navItems.filter((item) => ['debts', 'investments'].includes(item.id));
+  const mobilePrimaryItems = navItems.filter((item) => ['overview', 'banks', 'budget', 'bills'].includes(item.id));
+  const mobileMoreItems = navItems.filter((item) => ['goals', 'debts', 'investments'].includes(item.id));
   const isMobileMoreActive = mobileMoreItems.some((item) => item.id === activeSubTab);
 
   const pageMeta: Partial<Record<FinanceSubTab, { title: string; description: string }>> = {
     overview: { title: 'Visão Geral', description: 'Seu panorama financeiro consolidado, com dados de todas as áreas.' },
+    banks: { title: 'Bancos e extratos', description: 'Veja os saldos e lançamentos que você importou ou compartilhou.' },
     budget: { title: 'Orçamento', description: 'Planeje, registre e acompanhe para onde seu dinheiro está indo.' },
     goals: { title: 'Metas', description: 'Direcione recursos para sua reserva e seus objetivos financeiros.' },
     debts: { title: 'Dívidas', description: 'Acompanhe obrigações e planeje a melhor estratégia de quitação.' },
@@ -159,6 +165,7 @@ export const FinanceView: React.FC = () => {
         <Suspense fallback={<div role="status" className="grid min-h-72 place-items-center text-sm font-semibold text-neutral-500">Carregando área financeira...</div>}>
         <div className="pt-2">
           {activeSubTab === 'overview' && <FinanceOverviewTab />}
+          {activeSubTab === 'banks' && <BankTab workspace={workspace} couple={couple} />}
           {activeSubTab === 'emergency' && <FinanceEmergencyTab />}
           {activeSubTab === 'budget' && <FinanceBudgetTab />}
           {activeSubTab === 'bills' && <FinanceBillsTab />}

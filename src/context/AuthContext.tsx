@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { inviteRedirect } from '../lib/workspaces';
 
 interface AuthContextValue {
   session: Session | null;
@@ -54,24 +55,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: name } },
+        options: { data: { full_name: name }, emailRedirectTo: inviteRedirect() },
       });
       if (error) throw error;
-      if (data.user) {
-        const { error: profileError } = await supabase.from('profiles').upsert({
-          id: data.user.id,
-          full_name: name,
-          updated_at: new Date().toISOString(),
-        });
-        if (profileError && data.session) throw profileError;
-      }
       return !data.session;
     },
     resendConfirmation: async (email) => {
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email,
-        options: { emailRedirectTo: window.location.origin },
+        options: { emailRedirectTo: inviteRedirect() },
       });
       if (error) throw error;
     },

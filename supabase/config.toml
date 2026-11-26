@@ -1,0 +1,4 @@
+project_id = "fluxo"
+
+[functions.open-finance]
+verify_jwt = false

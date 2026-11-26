@@ -309,6 +309,7 @@ export type FinanceSubTab =
   | 'budget'
   | 'transactions'
   | 'accounts'
+  | 'banks'
   | 'bills'
   | 'debts'
   | 'goals'

@@ -99,10 +99,10 @@ export const AuthScreen: React.FC = () => {
               Seu salário com destino, clareza e controle.
             </h1>
             <p className="mt-5 text-base leading-relaxed text-indigo-100/80">
-              Organize orçamento, contas, dívidas, metas e investimentos em uma única visão financeira.
+              Organize seu dinheiro no seu espaço e planeje o futuro em casal.
             </p>
           </div>
-          <p className="relative text-xs text-indigo-200/60">Fluxo · Central de Finanças Pessoais</p>
+          <p className="relative text-xs text-indigo-200/60">Fluxo · Finanças do casal</p>
         </section>
 
         <section className="flex items-center justify-center p-6 sm:p-10">

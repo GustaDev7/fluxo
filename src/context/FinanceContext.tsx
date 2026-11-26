@@ -43,8 +43,7 @@ import {
   exportTransactionsToCSV,
   importTransactionsFromCSV,
 } from '../utils/financeUtils';
-import { useAuth } from './AuthContext';
-import { FinanceConflictError, loadFinanceData, saveFinanceData } from '../lib/supabaseStore';
+import { FinanceConflictError, loadFinanceData, saveFinanceData, type FinanceLedger } from '../lib/supabaseStore';
 import { getTodayDateString } from '../utils/date';
 
 interface FinanceContextType {
@@ -175,8 +174,7 @@ interface FinanceContextType {
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
-export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user: authUser } = useAuth();
+export const FinanceProvider: React.FC<{ workspaceId: string; children: React.ReactNode }> = ({ workspaceId, children }) => {
   const initialMonth = getTodayDateString().slice(0, 7);
 
   // Navigation subTab
@@ -225,7 +223,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [lastFinanceDbError, setLastFinanceDbError] = useState<string | null>(null);
   const [lastFinanceDbSyncedAt, setLastFinanceDbSyncedAt] = useState<string | null>(null);
   const [isHydratedFromDb, setIsHydratedFromDb] = useState<boolean>(false);
-  const saveQueueRef = useRef<Promise<string | void>>(Promise.resolve());
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const savedPayloadRef = useRef<string | null>(null);
   const serverRevisionRef = useRef<string | null>(null);
   const pendingSavesRef = useRef(0);
   const actionLocksRef = useRef(new Set<string>());
@@ -252,14 +251,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, []);
 
-  // Initial load from Supabase for the authenticated user.
   useEffect(() => {
-    if (!authUser) return;
     let isMounted = true;
     async function loadFinanceFromDb() {
       try {
-        const data = await loadFinanceData(authUser.id);
-        if (data && isMounted) {
+        const stored = await loadFinanceData(workspaceId);
+        if (!isMounted) return;
+        if (stored) {
+          const data = stored.payload;
           setAccounts(data.accounts as FinanceAccount[]);
           setCreditCards(data.creditCards as CreditCard[]);
           setTransactions(data.transactions as FinanceTransaction[]);
@@ -276,12 +275,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           setMonthlyClosingHistory(data.closings as MonthlyClosing[]);
           if (data.diagnosis && Object.keys(data.diagnosis).length) setDiagnosis(data.diagnosis as FinancialDiagnosisData);
 
-          setIsFinanceDbConnected(true);
-          setLastFinanceDbError(null);
-          serverRevisionRef.current = data.serverRevision;
+          serverRevisionRef.current = stored.serverRevision;
           setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
-          setIsHydratedFromDb(true);
         }
+        setIsFinanceDbConnected(true);
+        setLastFinanceDbError(null);
+        setIsHydratedFromDb(true);
       } catch (err) {
         console.error('Could not load finance data from Supabase:', err);
         if (isMounted) {
@@ -294,10 +293,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => {
       isMounted = false;
     };
-  }, [authUser]);
+  }, [initialMonth, workspaceId]);
 
   // Payload for server database sync
-  const financeDbPayload = useMemo(() => ({
+  const financeDbPayload = useMemo<FinanceLedger>(() => ({
     accounts,
     creditCards,
     transactions,
@@ -313,62 +312,41 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     diagnosis,
   }), [accounts, creditCards, transactions, bills, debts, installments, emergencyFund, goals, investments, budget, monthlyBudgets, monthlyClosingHistory, diagnosis]);
 
-  // Auto-sync debounced to Supabase.
-  useEffect(() => {
-    if (!isHydratedFromDb || !authUser) return;
-
-    const timer = setTimeout(() => {
-      pendingSavesRef.current += 1;
-      setIsFinanceDbSaving(true);
-      saveQueueRef.current = saveQueueRef.current
-        .catch(() => undefined)
-        .then(() => saveFinanceData(authUser.id, financeDbPayload, serverRevisionRef.current))
-        .then((revision) => {
-          if (revision) serverRevisionRef.current = revision;
-          setIsFinanceDbConnected(true);
-          setLastFinanceDbError(null);
-          setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
-        })
-        .catch((error) => {
-          console.error('Could not save finance data to Supabase:', error);
-          setIsFinanceDbConnected(false);
-          setLastFinanceDbError(error instanceof FinanceConflictError ? error.message : 'Existem alterações aguardando sincronização.');
-        })
-        .finally(() => {
-          pendingSavesRef.current -= 1;
-          if (pendingSavesRef.current === 0) setIsFinanceDbSaving(false);
-        });
-    }, 600);
-
-    return () => clearTimeout(timer);
-  }, [authUser, financeDbPayload, isHydratedFromDb]);
-
   const forceFinanceDbSync = useCallback(async (): Promise<boolean> => {
-    if (!authUser || !isHydratedFromDb) return false;
+    if (!isHydratedFromDb) return false;
+    const payload = JSON.stringify(financeDbPayload);
     pendingSavesRef.current += 1;
     setIsFinanceDbSaving(true);
-    const queuedSave = saveQueueRef.current
-      .catch(() => undefined)
-      .then(() => saveFinanceData(authUser.id, financeDbPayload, serverRevisionRef.current));
+    const queuedSave = saveQueueRef.current.catch(() => undefined).then(async () => {
+      if (payload === savedPayloadRef.current) return;
+      serverRevisionRef.current = await saveFinanceData(workspaceId, financeDbPayload, serverRevisionRef.current);
+      savedPayloadRef.current = payload;
+      setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
+    });
     saveQueueRef.current = queuedSave;
-
     try {
-      const revision = await queuedSave;
-      if (revision) serverRevisionRef.current = revision;
+      await queuedSave;
       setIsFinanceDbConnected(true);
       setLastFinanceDbError(null);
-      setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
       return true;
     } catch (error) {
-      console.error('Could not force finance data sync to Supabase:', error);
       setIsFinanceDbConnected(false);
-      setLastFinanceDbError(error instanceof FinanceConflictError ? error.message : 'A sincronização falhou. Verifique sua conexão e tente novamente.');
+      setLastFinanceDbError(error instanceof FinanceConflictError ? error.message : 'Existem alterações aguardando sincronização.');
       return false;
     } finally {
       pendingSavesRef.current -= 1;
       if (pendingSavesRef.current === 0) setIsFinanceDbSaving(false);
     }
-  }, [authUser, financeDbPayload, isHydratedFromDb]);
+  }, [financeDbPayload, isHydratedFromDb, workspaceId]);
+
+  useEffect(() => {
+    if (!isHydratedFromDb) return;
+    const payload = JSON.stringify(financeDbPayload);
+    if (savedPayloadRef.current === null) savedPayloadRef.current = payload;
+    if (isFinanceOffline || payload === savedPayloadRef.current) return;
+    const timer = window.setTimeout(() => void forceFinanceDbSync(), 600);
+    return () => window.clearTimeout(timer);
+  }, [financeDbPayload, forceFinanceDbSync, isFinanceOffline, isHydratedFromDb]);
 
   const setSelectedMonth = useCallback((month: string) => {
     if (!/^\d{4}-\d{2}$/.test(month)) return;
