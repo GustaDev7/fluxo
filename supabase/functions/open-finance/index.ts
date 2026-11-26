@@ -96,6 +96,68 @@ const moneyValue = (value: unknown): number | null => {
 };
 const currencyCode = (value: unknown) => /^[A-Z]{3}$/.test(label(value)) ? label(value) : 'BRL';
 
+function belvoInstitution(value: unknown) {
+  const name = label(field(record(value) ?? {}, 'display_name', 'displayName', 'name')) || label(value);
+  if (/nubank|nu pagamentos/i.test(name)) return 'Nubank';
+  if (/mercado[ _-]?pago/i.test(name)) return 'Mercado Pago';
+  return name;
+}
+
+function belvoAccount(account: BelvoRecord, connection: BelvoRecord) {
+  const providerName = label(field(account, 'name', 'display_name', 'displayName'));
+  const institution = belvoInstitution(connection.institution) || belvoInstitution(account.institution);
+  const kind = [account.category, account.type, account.account_type, account.subtype]
+    .map(label).join(' ').replace(/[_-]/g, ' ').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  const isCard = Boolean(record(account.credit_data)) || /credit card|cartao de credito/.test(kind) || /\bvisa\b|mastercard/i.test(providerName) ||
+    (/^gold$/i.test(providerName) && /nubank|nu pagamentos/i.test(institution));
+  const isDebt = /loan|financing|financiamento|emprestimo/.test(kind) ||
+    /credito pessoal|crédito pessoal|financiamento/i.test(providerName);
+  const group = isCard ? 'card' : isDebt ? 'debt' : /checking|savings|deposit|payment account|conta corrente|poupanca|conta de pagamento/.test(kind) ? 'cash' : 'other';
+  const type = {
+    card: 'Cartão de crédito',
+    debt: /financ/i.test(kind + ' ' + providerName) ? 'Financiamento' : 'Empréstimo',
+    cash: /savings|poupanca/.test(kind) ? 'Poupança' : /checking|conta corrente/.test(kind) ? 'Conta corrente' : 'Conta bancária',
+    other: /investment/.test(kind) ? 'Investimento' : 'Produto financeiro',
+  }[group];
+  const balance = field(account, 'balance', 'current_balance', 'currentBalance');
+  const reported = record(balance);
+  const available = group === 'cash' ? moneyValue(reported?.available) : null;
+  const shown = available ?? moneyValue(reported?.current ?? reported?.amount ?? reported?.available ?? balance);
+  const finalDigits = group === 'card' ? label(field(account, 'last_four', 'lastFour', 'last_four_digits', 'last4')) : '';
+  const name = !providerName || providerName.toLowerCase() === institution.toLowerCase() ? type : providerName;
+  return {
+    name: /^gold$/i.test(name) ? 'Gold' : name, institution, group, type,
+    lastFour: /^\d{4}$/.test(finalDigits) ? finalDigits : null, balance: shown,
+    balanceLabel: available !== null ? 'Saldo disponível' : group === 'cash' ? 'Saldo informado' : 'Valor informado',
+    currency: currencyCode(field(account, 'currency', 'currency_code', 'currencyCode') ?? reported?.currency),
+  };
+}
+
+function belvoInvestment(row: BelvoRecord, connection: BelvoRecord) {
+  const balance = record(row.balance);
+  const net = moneyValue(field(balance ?? {}, 'net_value', 'netValue') ?? field(row, 'net_value', 'netValue'));
+  const gross = moneyValue(field(balance ?? {}, 'gross_value', 'grossValue') ?? field(row, 'gross_value', 'grossValue'));
+  return {
+    name: label(field(row, 'product_name', 'productName', 'name')) || 'Investimento',
+    institution: belvoInstitution(connection.institution) || belvoInstitution(row.institution),
+    currency: currencyCode(field(row, 'currency', 'currency_code') ?? balance?.currency),
+    balance: net ?? gross ?? moneyValue(balance?.current ?? balance?.amount ?? row.balance),
+    balanceLabel: net !== null ? 'Valor líquido' : gross !== null ? 'Valor bruto' : 'Valor informado',
+    date: label(field(balance ?? {}, 'reference_date', 'referenceDate') ?? row.reference_date).slice(0, 10),
+  };
+}
+
+function belvoBill(row: BelvoRecord, connection: BelvoRecord) {
+  return {
+    name: label(field(row, 'bill_name', 'name', 'description')) || 'Fatura de cartão',
+    institution: belvoInstitution(connection.institution) || belvoInstitution(row.institution),
+    currency: currencyCode(field(row, 'currency', 'currency_code') ?? record(row.amount)?.currency),
+    amount: moneyValue(field(row, 'total_amount', 'totalAmount', 'amount', 'balance')) ??
+      moneyValue(record(row.amount)?.value),
+    dueDate: label(field(row, 'due_date', 'dueDate', 'payment_due_date')).slice(0, 10),
+  };
+}
+
 function belvoPage(result: BelvoRecord, listName: string) {
   if (result.isError) {
     const outputs = Array.isArray(result.content) ? result.content : [];
@@ -173,7 +235,13 @@ async function readBelvoBankData(
     const kind = (label(source) || label(record(source)?.name) || label(record(source)?.id)).toLowerCase();
     return !kind || /open[ _-]?finance|banking|^ofda|^of[ _-]?br/.test(kind);
   });
-  const accounts: { name: string; balance: number | null; currency: string }[] = [];
+  const accounts: ReturnType<typeof belvoAccount>[] = [];
+  const investments: ReturnType<typeof belvoInvestment>[] = [];
+  const bills: ReturnType<typeof belvoBill>[] = [];
+  const investmentLinks = new Set<string>();
+  const billLinks = new Set<string>();
+  let investmentFailures = 0;
+  let billFailures = 0;
   const transactions: { description: string; date: string; amount: number; currency: string; direction: string }[] = [];
   const seen = new Set<string>();
   let skipped = 0;
@@ -185,18 +253,29 @@ async function readBelvoBankData(
       skipped++;
       continue;
     }
-    const [accountResult, transactionResult] = await Promise.allSettled([
+    const [accountResult, transactionResult, investmentResult, billResult] = await Promise.allSettled([
       read('open_finance_list_accounts', 'accounts', link),
       read('open_finance_list_transactions', 'transactions', link),
+      read('open_finance_list_investments', 'investments', link),
+      read('open_finance_list_bills', 'bills', link),
     ]);
     if (accountResult.status === 'rejected') skipped++;
-    else for (const account of accountResult.value) {
-      const balance = field(account, 'balance', 'current_balance', 'currentBalance');
-      accounts.push({
-        name: label(field(account, 'name', 'display_name', 'displayName', 'type', 'category')) || 'Conta',
-        balance: moneyValue(record(balance)?.current ?? record(balance)?.available ?? record(balance)?.amount ?? balance),
-        currency: currencyCode(field(account, 'currency', 'currency_code', 'currencyCode') ?? record(balance)?.currency),
-      });
+    else accounts.push(...accountResult.value.map(account => belvoAccount(account, connection)));
+    if (investmentResult.status === 'rejected') investmentFailures++;
+    else for (const item of investmentResult.value) {
+      const id = label(field(item, 'id', 'investment_id', 'investmentId'));
+      if (id && investmentLinks.has(link + ':' + id)) continue;
+      if (id) investmentLinks.add(link + ':' + id);
+      investments.push(belvoInvestment(item, connection));
+    }
+    if (billResult.status === 'rejected') billFailures++;
+    else for (const item of billResult.value) {
+      const bill = belvoBill(item, connection);
+      if (bill.dueDate && !bill.dueDate.startsWith(month)) continue;
+      const id = label(field(item, 'id', 'bill_id', 'billId'));
+      if (id && billLinks.has(link + ':' + id)) continue;
+      if (id) billLinks.add(link + ':' + id);
+      bills.push(bill);
     }
     if (transactionResult.status === 'rejected') skipped++;
     else for (const tx of transactionResult.value) {
@@ -215,7 +294,7 @@ async function readBelvoBankData(
     }
   }
   transactions.sort((a, b) => b.date.localeCompare(a.date));
-  return { month, accounts, transactions: transactions.slice(0, 100), partial: partial || skipped > 0 || connections.length > 10 || transactions.length > 100, skipped };
+  return { month, accounts, investments, bills, investmentFailures, billFailures, transactions: transactions.slice(0, 100), partial: partial || skipped > 0 || connections.length > 10 || transactions.length > 100, skipped };
 }
 
 async function verifyBelvo(code: string, verifier: string, month?: string) {

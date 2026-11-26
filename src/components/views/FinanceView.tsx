@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { useFinance } from '../../context/FinanceContext';
 import { FinanceOverviewTab } from './finance/FinanceOverviewTab';
+import { BelvoWorkspaceSummary } from './finance/BelvoWorkspaceSummary';
 import { FinanceTransactionModal } from './finance/FinanceTransactionModal';
 import { FinanceDiagnosisModal } from './finance/FinanceDiagnosisModal';
 import { EmergencyConfigModal } from './finance/EmergencyConfigModal';
@@ -164,6 +165,7 @@ export const FinanceView: React.FC<{ workspace: Workspace; couple?: Workspace }>
         {/* Sub Tab Views */}
         <Suspense fallback={<div role="status" className="grid min-h-72 place-items-center text-sm font-semibold text-neutral-500">Carregando área financeira...</div>}>
         <div className="pt-2">
+          {workspace.kind === 'personal' && <BelvoWorkspaceSummary tab={activeSubTab} />}
           {activeSubTab === 'overview' && <FinanceOverviewTab />}
           {activeSubTab === 'banks' && <BankTab workspace={workspace} couple={couple} />}
           {activeSubTab === 'emergency' && <FinanceEmergencyTab />}

@@ -1,24 +1,14 @@
 import { useEffect, useState } from 'react';
 import { bankAction } from '../../../lib/bankStore';
 import { errorMessage } from '../../../lib/workspaces';
+import { belvoAccountSections, formatBelvoMoney as money, type BelvoData } from '../../../lib/belvoData';
+import { useFinance } from '../../../context/FinanceContext';
 
 const previewOrigin = 'https://fluxo-git-feat-fluxo-casal-open-finance-gustadev7s-projects.vercel.app';
 const metadataUrl = 'https://kwhbkkvoahxztzzscdnm.supabase.co/functions/v1/open-finance/belvo-client.json';
 const redirectUri = previewOrigin + '/?belvo=1';
 const requestKey = 'fluxo-belvo-oauth';
 type Pending = { userId: string; state: string; verifier: string; expires: number; month: string };
-type BelvoData = {
-  month: string;
-  accounts: { name: string; currency: string; balance: number | null }[];
-  transactions: { description: string; date: string; amount: number; currency: string; direction: string }[];
-  partial: boolean;
-  skipped: number;
-};
-
-function money(amount: number, currency: string) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency }).format(amount);
-}
-
 function base64Url(bytes: Uint8Array) {
   return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
@@ -26,9 +16,7 @@ function base64Url(bytes: Uint8Array) {
 export function BelvoPilot({ userId, month, onMonth }: { userId: string; month: string; onMonth: (month: string) => void }) {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [data, setData] = useState<BelvoData>();
-
-  useEffect(() => { setData(undefined); setMessage(''); }, [userId]);
+  const { belvoData: data, setBelvoData: setData } = useFinance();
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -54,7 +42,7 @@ export function BelvoPilot({ userId, month, onMonth }: { userId: string; month: 
       })
       .catch(error => setMessage(errorMessage(error, 'Não foi possível validar a conexão.')))
       .finally(() => setBusy(false));
-  }, [userId, onMonth]);
+  }, [userId, onMonth, setData]);
 
   async function connect() {
     setBusy(true);
@@ -92,12 +80,25 @@ export function BelvoPilot({ userId, month, onMonth }: { userId: string; month: 
           : 'Mostrando uma parte dos resultados disponibilizados pelo Belvo.'}</p>}
         <section>
           <h3 className="text-sm font-bold">Contas e saldos</h3>
-          {data.accounts.length ? <ul className="mt-2 divide-y divide-violet-900/40">{data.accounts.map((account, index) => (
-            <li key={index} className="flex justify-between gap-4 py-2 text-sm">
-              <span>{account.name}</span>
-              <strong>{account.balance === null ? 'Saldo indisponível' : money(account.balance, account.currency)}</strong>
-            </li>
-          ))}</ul> : <p className="mt-1 text-sm text-neutral-400">{data.skipped ? 'Nenhuma conta pôde ser carregada.' : 'Nenhuma conta foi retornada pelo Belvo.'}</p>}
+          {data.accounts.length ? belvoAccountSections.map(({ id, title }) => {
+            const accounts = data.accounts.filter(account => (account.group ?? 'other') === id);
+            if (!accounts.length) return null;
+            return <div key={id} className="mt-4">
+              <h4 className="text-xs font-semibold text-violet-300">{title}</h4>
+              <ul className="mt-1 divide-y divide-violet-900/40">{accounts.map((account, index) => (
+                <li key={index} className="flex justify-between gap-4 py-2 text-sm">
+                  <div>
+                    <p>{account.name}{account.lastFour && <span className="text-neutral-400"> · final {account.lastFour}</span>}</p>
+                    {account.institution && <p className="text-xs text-neutral-400">{account.institution}</p>}
+                  </div>
+                  <div className="text-right">
+                    <strong>{account.balance === null ? 'Indisponível' : money(account.balance, account.currency)}</strong>
+                    <p className="text-xs text-neutral-400">{account.balanceLabel ?? 'Valor informado'}</p>
+                  </div>
+                </li>
+              ))}</ul>
+            </div>;
+          }) : <p className="mt-1 text-sm text-neutral-400">{data.skipped ? 'Nenhuma conta pôde ser carregada.' : 'Nenhuma conta foi retornada pelo Belvo.'}</p>}
         </section>
         <section>
           <h3 className="text-sm font-bold">Lançamentos do mês</h3>

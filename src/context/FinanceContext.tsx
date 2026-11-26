@@ -1,3 +1,4 @@
+import type { BelvoData } from '../lib/belvoData';
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   FinanceAccount,
@@ -47,6 +48,8 @@ import { FinanceConflictError, loadFinanceData, saveFinanceData, type FinanceLed
 import { getTodayDateString } from '../utils/date';
 
 interface FinanceContextType {
+  belvoData?: BelvoData;
+  setBelvoData: (data: BelvoData) => void;
   // Navigation
   subTab: FinanceSubTab;
   setSubTab: (tab: FinanceSubTab) => void;
@@ -179,6 +182,7 @@ export const FinanceProvider: React.FC<{ workspaceId: string; children: React.Re
 
   // Navigation subTab
   const [subTab, setSubTab] = useState<FinanceSubTab>(() => new URLSearchParams(window.location.search).get('belvo') === '1' ? 'banks' : 'overview');
+  const [belvoData, setBelvoData] = useState<BelvoData>();
   const [selectedMonth, setSelectedMonthState] = useState(initialMonth);
 
   // Modals state
@@ -1085,6 +1089,8 @@ export const FinanceProvider: React.FC<{ workspaceId: string; children: React.Re
   );
 
   const value = {
+    belvoData,
+    setBelvoData,
     subTab,
     setSubTab,
     selectedMonth,
