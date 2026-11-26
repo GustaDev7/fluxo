@@ -297,17 +297,55 @@ async function readBelvoBankData(
   return { month, accounts, investments, bills, investmentFailures, billFailures, transactions: transactions.slice(0, 100), partial: partial || skipped > 0 || connections.length > 10 || transactions.length > 100, skipped };
 }
 
-async function verifyBelvo(code: string, verifier: string, month?: string) {
+type BelvoTokens = { access: string; refresh: string | null; expiresAt: number };
+
+const demoFluxoIds = new Set(['dbd41ec9-a27c-4f29-a0c9-87a5756d9323', '6270b4e0-99ec-457a-87ed-83d5cddd25c8']);
+
+async function belvoToken(params: Record<string, string>, previous?: string): Promise<BelvoTokens> {
   const response = await fetch('https://auth.panorama.belvo.com/oauth2/token', {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(12000),
-    body: new URLSearchParams({
-      grant_type: 'authorization_code', client_id: belvoClientId, code, code_verifier: verifier,
-      redirect_uri: fluxoPreviewOrigin + '/?belvo=1', resource: belvoResource,
-    }),
+    body: new URLSearchParams({ client_id: belvoClientId, resource: belvoResource, ...params }),
   });
-  if (!response.ok) throw new RequestError(502, 'O Belvo não concluiu a autorização. Tente conectar novamente.');
-  const { access_token: token } = await response.json();
-  if (typeof token !== 'string' || !token) throw new RequestError(502, 'O Belvo não retornou acesso ao conector.');
+  const data = await response.json().catch(() => null);
+  if (!response.ok || typeof data?.access_token !== 'string' || !data.access_token) {
+    if (data?.error === 'invalid_grant') throw new RequestError(409, 'A autorização da Belvo expirou. Conecte sua conta novamente.');
+    throw new RequestError(502, 'O Belvo não concluiu a autorização. Tente novamente.');
+  }
+  const expires = Number(data.expires_in);
+  return {
+    access: data.access_token,
+    refresh: typeof data.refresh_token === 'string' ? data.refresh_token : previous ?? null,
+    expiresAt: Date.now() + (Number.isFinite(expires) && expires > 0 ? expires : 300) * 1000,
+  };
+}
+
+function exchangeBelvo(code: string, verifier: string) {
+  return belvoToken({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: fluxoPreviewOrigin + '/?belvo=1' });
+}
+
+async function belvoCipherKey(serviceKey: string) {
+  const bytes = new TextEncoder().encode('fluxo:belvo:tokens:v1:' + serviceKey);
+  return crypto.subtle.importKey('raw', await crypto.subtle.digest('SHA-256', bytes), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+async function sealBelvo(tokens: BelvoTokens, owner: string, serviceKey: string) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const bytes = new TextEncoder().encode(JSON.stringify(tokens));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(owner) }, await belvoCipherKey(serviceKey), bytes);
+  return btoa(String.fromCharCode(...iv, ...new Uint8Array(ciphertext)));
+}
+
+async function openBelvo(cipher: string, owner: string, serviceKey: string): Promise<BelvoTokens> {
+  try {
+    const bytes = Uint8Array.from(atob(cipher), char => char.charCodeAt(0));
+    const decrypted = await crypto.subtle.decrypt({
+      name: 'AES-GCM', iv: bytes.slice(0, 12), additionalData: new TextEncoder().encode(owner),
+    }, await belvoCipherKey(serviceKey), bytes.slice(12));
+    return JSON.parse(new TextDecoder().decode(decrypted));
+  } catch { throw new RequestError(409, 'Conecte sua conta Belvo novamente para atualizar a autorização.'); }
+}
+
+async function verifyBelvo(token: string, month?: string) {
   const headers = new Headers({
     Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
   });
@@ -369,7 +407,7 @@ Deno.serve(async request => {
   if (request.method === 'GET' && new URL(request.url).pathname.endsWith('/open-finance/belvo-client.json')) {
     return Response.json({
       client_id: belvoClientId, client_name: 'Fluxo Casal',
-      redirect_uris: [fluxoPreviewOrigin + '/?belvo=1'], grant_types: ['authorization_code'],
+      redirect_uris: [fluxoPreviewOrigin + '/?belvo=1'], grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'], token_endpoint_auth_method: 'none',
     });
   }
@@ -411,20 +449,84 @@ Deno.serve(async request => {
     if (authError || !user?.email_confirmed_at) throw new RequestError(401, 'Entre com uma conta de e-mail confirmado.');
     const payload = await request.json().catch(() => null);
     if (!payload || typeof payload.action !== 'string') throw new RequestError(400, 'Ação inválida.');
-    if (payload.action === 'belvo-check' || payload.action === 'belvo-read') {
-      if (origin && origin !== fluxoPreviewOrigin) throw new RequestError(403, 'Abra a prévia do Fluxo para verificar o Belvo.');
-      if (typeof payload.code !== 'string' || !payload.code || payload.code.length > 4096
-        || typeof payload.verifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(payload.verifier)) {
-        throw new RequestError(400, 'Retorno de autorização inválido.');
+    if (payload.action.startsWith('belvo-')) {
+      if (origin && origin !== fluxoPreviewOrigin) throw new RequestError(403, 'Abra a prévia do Fluxo para acessar o Belvo.');
+      const owner = user.id;
+      const action = payload.action;
+      const demo = demoFluxoIds.has(owner);
+      if (action === 'belvo-disconnect') {
+        await rpc('fluxo_disconnect_belvo', { actor: owner });
+        return json({ connected: false });
       }
-      const month = payload.action === 'belvo-read' ? payload.month : undefined;
-      if (payload.action === 'belvo-read' && (typeof month !== 'string' || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month))) {
+      if (!['belvo-check', 'belvo-read', 'belvo-connect', 'belvo-sync'].includes(action)) {
+        throw new RequestError(400, 'Ação inválida.');
+      }
+      const month = action === 'belvo-check' ? undefined : payload.month;
+      if (action !== 'belvo-check' && (typeof month !== 'string' || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month))) {
         throw new RequestError(400, 'Selecione um mês válido.');
       }
-      try { return json(await verifyBelvo(payload.code, payload.verifier, month)); }
-      catch (error) {
-        if (error instanceof RequestError) throw error;
+
+      const sessions = () => admin.from('fluxo_belvo_sessions');
+      let lease: string | undefined;
+      try {
+        let tokens: BelvoTokens;
+        if (action === 'belvo-sync') {
+          if (demo) return json({ connected: false });
+          const existing = await sessions().select('owner_id').eq('owner_id', owner).maybeSingle();
+          if (existing.error) throw existing.error;
+          if (!existing.data) return json({ connected: false });
+          const cached = await admin.from('fluxo_belvo_snapshots').select('payload,updated_at')
+            .eq('owner_id', owner).eq('month', month).maybeSingle();
+          if (cached.error) throw cached.error;
+          if (cached.data && Date.now() - Date.parse(cached.data.updated_at) < 120000) {
+            return json({ connected: true, bankData: cached.data.payload, updatedAt: cached.data.updated_at });
+          }
+
+          const recent = new Date().toISOString();
+          const candidate = crypto.randomUUID();
+          const claimed = await sessions().update({ lease_id: candidate, lease_until: new Date(Date.now() + 90000).toISOString() })
+            .eq('owner_id', owner).or('lease_until.is.null,lease_until.lt.' + recent).select('secret_cipher').maybeSingle();
+          if (claimed.error) throw claimed.error;
+          if (!claimed.data) return json({ connected: true, pending: true });
+          lease = candidate;
+          tokens = await openBelvo(claimed.data.secret_cipher, owner, serviceKey);
+          if (tokens.expiresAt - Date.now() < 30000) {
+            if (!tokens.refresh) throw new RequestError(409, 'Conecte sua conta Belvo novamente para atualizar a autorização.');
+            tokens = await belvoToken({ grant_type: 'refresh_token', refresh_token: tokens.refresh }, tokens.refresh);
+            const saved = await sessions().update({ secret_cipher: await sealBelvo(tokens, owner, serviceKey) })
+              .eq('owner_id', owner).eq('lease_id', lease).select('owner_id').maybeSingle();
+            if (saved.error) throw saved.error;
+            if (!saved.data) throw new RequestError(409, 'A conexão mudou. Reabra o painel.');
+          }
+        } else {
+          if (action === 'belvo-connect' && demo) throw new RequestError(403, 'Use seu login particular para salvar uma conexão bancária.');
+          if (typeof payload.code !== 'string' || !payload.code || payload.code.length > 4096
+            || typeof payload.verifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(payload.verifier)) {
+            throw new RequestError(400, 'Retorno de autorização inválido.');
+          }
+          tokens = await exchangeBelvo(payload.code, payload.verifier);
+          if (action === 'belvo-connect' && tokens.refresh) {
+            const candidate = crypto.randomUUID();
+            await rpc('fluxo_connect_belvo', { actor: owner, cipher: await sealBelvo(tokens, owner, serviceKey), lease: candidate });
+            lease = candidate;
+          }
+        }
+        const reading = await verifyBelvo(tokens.access, month);
+        const updatedAt = new Date().toISOString();
+        if (lease && reading.bankData) {
+          const saved = await rpc<boolean>('fluxo_write_belvo_snapshot', { actor: owner, lease, period: month, data: reading.bankData });
+          if (!saved) throw new RequestError(409, 'A conexão mudou. Reabra o painel.');
+        }
+        return json({ ...reading, connected: !!lease, updatedAt,
+          ...(action === 'belvo-connect' && !tokens.refresh ? { manual: true } : {}) });
+      } catch (error) {
+        if (error instanceof RequestError) {
+          if (action === 'belvo-sync' && error.status === 409) return json({ connected: false, reauthorize: true });
+          throw error;
+        }
         throw new RequestError(502, 'Não foi possível concluir a consulta ao Belvo. Tente novamente.');
+      } finally {
+        if (lease) await sessions().update({ lease_id: null, lease_until: null }).eq('owner_id', owner).eq('lease_id', lease);
       }
     }
     const actor = user.id;

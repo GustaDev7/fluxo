@@ -85,9 +85,9 @@ export const AuthScreen: React.FC = () => {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-neutral-950 px-5 py-8 text-white">
-      <div className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-6xl overflow-hidden rounded-[2rem] border border-white/10 bg-neutral-900 shadow-2xl lg:grid-cols-[1.1fr_0.9fr]">
-        <section className="relative hidden overflow-hidden bg-gradient-to-br from-indigo-600 via-violet-700 to-neutral-950 p-12 lg:flex lg:flex-col lg:justify-between">
+    <main className="min-h-[100dvh] bg-[#0d1211] px-5 py-8 text-white">
+      <div className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-6xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#131918] shadow-2xl lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="relative hidden overflow-hidden bg-gradient-to-br from-emerald-900 via-[#17392c] to-[#101615] p-12 lg:flex lg:flex-col lg:justify-between">
           <div className="absolute -right-28 -top-24 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
           <FluxoLogo />
           <div className="relative max-w-lg">
@@ -96,13 +96,13 @@ export const AuthScreen: React.FC = () => {
               Seus dados protegidos por usuário
             </div>
             <h1 className="text-5xl font-black leading-[1.05] tracking-tight">
-              Seu salário com destino, clareza e controle.
+              Suas finanças em um só lugar.
             </h1>
-            <p className="mt-5 text-base leading-relaxed text-indigo-100/80">
-              Organize seu dinheiro no seu espaço e planeje o futuro em casal.
+            <p className="mt-5 text-base leading-relaxed text-emerald-100/80">
+              Acompanhe saldos, despesas, dívidas, metas e investimentos no seu painel de Open Finance.
             </p>
           </div>
-          <p className="relative text-xs text-indigo-200/60">Fluxo · Finanças do casal</p>
+          <p className="relative text-xs text-emerald-200/60">Fluxo · Open Finance</p>
         </section>
 
         <section className="flex items-center justify-center p-6 sm:p-10">
@@ -119,21 +119,21 @@ export const AuthScreen: React.FC = () => {
               {mode === 'signup' && (
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-semibold text-neutral-300">Nome</span>
-                  <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20" placeholder="Como devemos chamar você?" />
+                  <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20" placeholder="Como devemos chamar você?" />
                 </label>
               )}
               <label className="block">
                 <span className="mb-1.5 block text-sm font-semibold text-neutral-300">E-mail</span>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-3.5 h-4 w-4 text-neutral-500" />
-                  <input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-10 pr-4 text-base outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20" placeholder="voce@email.com" />
+                  <input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-10 pr-4 text-base outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20" placeholder="voce@email.com" />
                 </div>
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-sm font-semibold text-neutral-300">Senha</span>
                 <div className="relative">
                   <LockKeyhole className="absolute left-3.5 top-3.5 h-4 w-4 text-neutral-500" />
-                  <input required minLength={8} type={showPassword ? 'text' : 'password'} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-10 pr-11 text-base outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20" placeholder="Mínimo de 8 caracteres" />
+                  <input required minLength={8} type={showPassword ? 'text' : 'password'} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-10 pr-11 text-base outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20" placeholder="Mínimo de 8 caracteres" />
                   <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute right-3 top-3 rounded-lg p-1 text-neutral-500 hover:text-white" aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -142,13 +142,13 @@ export const AuthScreen: React.FC = () => {
 
               {error && <p role="alert" className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2.5 text-sm text-rose-300">{error}</p>}
               {needsConfirmation && (
-                <button type="button" onClick={resend} disabled={isSubmitting} className="w-full rounded-xl border border-indigo-400/30 bg-indigo-400/10 px-4 py-2.5 text-sm font-bold text-indigo-300 transition hover:bg-indigo-400/20 disabled:opacity-60">
+                <button type="button" onClick={resend} disabled={isSubmitting} className="w-full rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-2.5 text-sm font-bold text-emerald-300 transition hover:bg-emerald-400/20 disabled:opacity-60">
                   Reenviar e-mail de confirmação
                 </button>
               )}
               {message && <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-300">{message}</p>}
 
-              <button disabled={isSubmitting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-bold transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60">
+              <button disabled={isSubmitting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-emerald-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">
                 {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
                 {mode === 'signin' ? 'Entrar no Fluxo' : 'Criar minha conta'}
               </button>
@@ -161,7 +161,7 @@ export const AuthScreen: React.FC = () => {
             )}
             <p className="mt-8 text-center text-sm text-neutral-400">
               {mode === 'signin' ? 'Ainda não tem uma conta?' : 'Já possui uma conta?'}{' '}
-              <button type="button" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); setMessage(''); }} className="font-bold text-indigo-400 hover:text-indigo-300">
+              <button type="button" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); setMessage(''); }} className="font-bold text-emerald-400 hover:text-emerald-300">
                 {mode === 'signin' ? 'Cadastre-se' : 'Entrar'}
               </button>
             </p>
