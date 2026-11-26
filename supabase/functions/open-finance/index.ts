@@ -84,7 +84,128 @@ const fluxoEdgeUrl = 'https://kwhbkkvoahxztzzscdnm.supabase.co/functions/v1/open
 const belvoClientId = fluxoEdgeUrl + '/belvo-client.json';
 const belvoResource = 'https://panorama-mcp.belvo.com/mcp';
 
-async function verifyBelvo(code: string, verifier: string) {
+type BelvoRecord = Record<string, unknown>;
+type BelvoTool = { name: string; inputSchema?: { properties?: BelvoRecord; required?: string[] } };
+const record = (value: unknown): BelvoRecord | undefined =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value as BelvoRecord : undefined;
+const field = (row: BelvoRecord, ...keys: string[]) => keys.map(key => row[key]).find(value => value != null);
+const label = (value: unknown): string => typeof value === 'string' ? value.trim().slice(0, 200) : '';
+const moneyValue = (value: unknown): number | null => {
+  const number = typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value;
+  return typeof number === 'number' && Number.isFinite(number) ? number : null;
+};
+const currencyCode = (value: unknown) => /^[A-Z]{3}$/.test(label(value)) ? label(value) : 'BRL';
+
+function belvoPage(result: BelvoRecord, listName: string) {
+  if (result.isError) throw new RequestError(502, 'O Belvo recusou a consulta de ' + listName + '.');
+  let payload: unknown = result.structuredContent;
+  if (payload == null && Array.isArray(result.content)) {
+    for (const block of result.content) {
+      if (block?.type !== 'text' || typeof block.text !== 'string') continue;
+      try { payload = JSON.parse(block.text); break; } catch { /* Ignore non-JSON blocks. */ }
+    }
+  }
+  let value = payload;
+  let next: unknown;
+  for (let depth = 0; depth < 4; depth++) {
+    if (Array.isArray(value)) return { rows: value.map(record).filter(row => row !== undefined), next };
+    const obj = record(value);
+    if (!obj) break;
+    next = field(obj, 'next', 'next_page', 'nextPage', 'next_cursor', 'nextCursor') ??
+      field(record(obj.pagination) ?? {}, 'next', 'next_page', 'nextPage', 'next_cursor', 'nextCursor') ?? next;
+    value = field(obj, listName, 'results', 'items', 'data', 'records', 'output');
+  }
+  throw new RequestError(502, 'O Belvo respondeu em um formato inesperado na consulta de ' + listName + '.');
+}
+
+function belvoArguments(tool: BelvoTool, link: string, month: string) {
+  const args: BelvoRecord = {};
+  const endOfMonth = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0)).toISOString().slice(0, 10);
+  for (const key of Object.keys(tool.inputSchema?.properties ?? {})) {
+    const normalized = key.replaceAll('_', '').toLowerCase();
+    if (link && ['link', 'linkid', 'connection', 'connectionid'].includes(normalized)) args[key] = link;
+    if (['datefrom', 'fromdate', 'startdate', 'start', 'dategte', 'valuedategte', 'transactiondategte'].includes(normalized)) args[key] = month + '-01';
+    if (['dateto', 'todate', 'enddate', 'end', 'datelte', 'valuedatelte', 'transactiondatelte'].includes(normalized)) args[key] = endOfMonth;
+    if (key === 'page') args[key] = 1;
+  }
+  return args;
+}
+
+async function readBelvoBankData(
+  tools: BelvoTool[], call: (tool: string, args: BelvoRecord) => Promise<BelvoRecord>, month: string,
+) {
+  let partial = false;
+  async function read(name: string, list: string, link = '') {
+    const tool = tools.find(item => item.name === name);
+    if (!tool) throw new RequestError(502, 'O Belvo não habilitou a consulta de ' + list + '.');
+    const args = belvoArguments(tool, link, month);
+    if (tool.inputSchema?.required?.some(key => !(key in args))) {
+      throw new RequestError(502, 'O Belvo exige campos adicionais para consultar ' + list + '.');
+    }
+    const rows: BelvoRecord[] = [];
+    const properties = tool.inputSchema?.properties ?? {};
+    const cursorKey = ['cursor', 'page_cursor', 'pageCursor'].find(key => key in properties);
+    for (let page = 1; page <= 3; page++) {
+      const result = belvoPage(await call(name, args), list);
+      rows.push(...result.rows);
+      if (!result.next) return rows;
+      if (page === 3) break;
+      if (typeof result.next === 'string' && cursorKey) {
+        if (args[cursorKey] === result.next) break;
+        args[cursorKey] = result.next;
+      } else if ('page' in properties) args.page = page + 1;
+      else break;
+    }
+    partial = true;
+    return rows;
+  }
+  const connections = (await read('list_connections', 'connections')).filter(connection => {
+    const source = field(connection, 'product', 'product_type', 'productType', 'type', 'source');
+    const kind = (label(source) || label(record(source)?.name) || label(record(source)?.id)).toLowerCase();
+    return !kind || /open[ _-]?finance|banking|^ofda|^of[ _-]?br/.test(kind);
+  });
+  const accounts: { name: string; balance: number | null; currency: string }[] = [];
+  const transactions: { description: string; date: string; amount: number; currency: string; direction: string }[] = [];
+  const seen = new Set<string>();
+  let skipped = 0;
+  for (const connection of connections.slice(0, 10)) {
+    const link = label(field(connection, 'link_id', 'linkId', 'link', 'id')) ||
+      label(record(connection.link)?.id);
+    if (!link) { skipped++; continue; }
+    const [accountResult, transactionResult] = await Promise.allSettled([
+      read('open_finance_list_accounts', 'accounts', link),
+      read('open_finance_list_transactions', 'transactions', link),
+    ]);
+    if (accountResult.status === 'rejected') skipped++;
+    else for (const account of accountResult.value) {
+      const balance = field(account, 'balance', 'current_balance', 'currentBalance');
+      accounts.push({
+        name: label(field(account, 'name', 'display_name', 'displayName', 'type', 'category')) || 'Conta',
+        balance: moneyValue(record(balance)?.current ?? record(balance)?.available ?? record(balance)?.amount ?? balance),
+        currency: currencyCode(field(account, 'currency', 'currency_code', 'currencyCode') ?? record(balance)?.currency),
+      });
+    }
+    if (transactionResult.status === 'rejected') skipped++;
+    else for (const tx of transactionResult.value) {
+      const date = label(field(tx, 'value_date', 'accounting_date', 'transaction_date', 'date', 'posted_on', 'datetime')).slice(0, 10);
+      const amount = moneyValue(field(tx, 'amount', 'value'));
+      if (amount === null || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !date.startsWith(month)) continue;
+      const id = label(field(tx, 'id', 'transaction_id', 'transactionId'));
+      if (id && seen.has(link + ':' + id)) continue;
+      if (id) seen.add(link + ':' + id);
+      const direction = label(field(tx, 'type', 'direction', 'credit_debit_type')).toLowerCase();
+      transactions.push({
+        date, amount: Math.abs(amount), currency: currencyCode(field(tx, 'currency', 'currency_code', 'currencyCode')),
+        direction: /inflow|credit/.test(direction) ? 'in' : /outflow|debit/.test(direction) || amount < 0 ? 'out' : '',
+        description: label(field(tx, 'description', 'description_raw', 'reference', 'name')) || 'Movimentação',
+      });
+    }
+  }
+  transactions.sort((a, b) => b.date.localeCompare(a.date));
+  return { month, accounts, transactions: transactions.slice(0, 100), partial: partial || skipped > 0 || connections.length > 10 || transactions.length > 100, skipped };
+}
+
+async function verifyBelvo(code: string, verifier: string, month?: string) {
   const response = await fetch('https://auth.panorama.belvo.com/oauth2/token', {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(12000),
     body: new URLSearchParams({
@@ -144,7 +265,12 @@ async function verifyBelvo(code: string, verifier: string) {
   const tools = await result(await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' }), 2);
   const count = Array.isArray(tools.tools) ? tools.tools.length : 0;
   if (!count) throw new RequestError(502, 'Nenhuma ferramenta MCP disponível para este login.');
-  return { verified: true };
+  if (!month) return { verified: true };
+  let requestId = 2;
+  return { verified: true, bankData: await readBelvoBankData(tools.tools, async (name, args) => {
+    const id = ++requestId;
+    return await result(await post({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }), id);
+  }, month) };
 }
 
 Deno.serve(async request => {
@@ -193,13 +319,21 @@ Deno.serve(async request => {
     if (authError || !user?.email_confirmed_at) throw new RequestError(401, 'Entre com uma conta de e-mail confirmado.');
     const payload = await request.json().catch(() => null);
     if (!payload || typeof payload.action !== 'string') throw new RequestError(400, 'Ação inválida.');
-    if (payload.action === 'belvo-check') {
+    if (payload.action === 'belvo-check' || payload.action === 'belvo-read') {
       if (origin && origin !== fluxoPreviewOrigin) throw new RequestError(403, 'Abra a prévia do Fluxo para verificar o Belvo.');
       if (typeof payload.code !== 'string' || !payload.code || payload.code.length > 4096
         || typeof payload.verifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(payload.verifier)) {
         throw new RequestError(400, 'Retorno de autorização inválido.');
       }
-      return json(await verifyBelvo(payload.code, payload.verifier));
+      const month = payload.action === 'belvo-read' ? payload.month : undefined;
+      if (payload.action === 'belvo-read' && (typeof month !== 'string' || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month))) {
+        throw new RequestError(400, 'Selecione um mês válido.');
+      }
+      try { return json(await verifyBelvo(payload.code, payload.verifier, month)); }
+      catch (error) {
+        if (error instanceof RequestError) throw error;
+        throw new RequestError(502, 'Não foi possível concluir a consulta ao Belvo. Tente novamente.');
+      }
     }
     const actor = user.id;
     const credentials = personal ? personalCredentials(actor) : {

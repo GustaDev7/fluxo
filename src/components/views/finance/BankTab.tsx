@@ -19,7 +19,7 @@ function currencyValue(value: number, currency: string) {
 }
 
 export function BankTab({ workspace, couple }: { workspace: Workspace; couple?: Workspace }) {
-  const { selectedMonth } = useFinance();
+  const { selectedMonth, setSelectedMonth } = useFinance();
   const { user } = useAuth();
   const [pagination, setPagination] = useState({ month: selectedMonth, page: 0 });
   const page = pagination.month === selectedMonth ? pagination.page : 0;
@@ -127,7 +127,7 @@ export function BankTab({ workspace, couple }: { workspace: Workspace; couple?: 
   } else if (provider) providerMessage = 'A conexão bancária aguarda a configuração do provedor.';
 
   return <section className="space-y-5">
-    {personal && user && <BelvoPilot userId={user.id} />}
+    {personal && user && <BelvoPilot userId={user.id} month={selectedMonth} onMonth={setSelectedMonth} />}
     {personal ? <div className="grid gap-4 xl:grid-cols-[1.25fr_1fr]">
       <form onSubmit={handleImport} className="rounded-3xl border border-violet-950 bg-[#151021] p-5">
         <div className="flex items-start gap-3">
