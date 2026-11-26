@@ -5,17 +5,24 @@ type AssistantMessageRow = {
   id: string;
   role: FinanceAssistantRole;
   content: string;
-  metadata: FinanceAssistantMessageMetadata | null;
+  metadata: (Omit<FinanceAssistantMessageMetadata, 'route'> & { route?: FinanceAssistantMessageMetadata['route'] | 'budget' }) | null;
   created_at: string;
 };
 
-const fromRow = (row: AssistantMessageRow): FinanceAssistantMessage => ({
-  id: row.id,
-  role: row.role,
-  content: row.content,
-  createdAt: row.created_at,
-  metadata: row.metadata || undefined,
-});
+function fromRow(row: AssistantMessageRow): FinanceAssistantMessage {
+  const metadata = row.metadata;
+  return {
+    id: row.id,
+    role: row.role,
+    content: row.content,
+    createdAt: row.created_at,
+    metadata: metadata ? {
+      ...metadata,
+      route: metadata.route === 'budget' ? 'overview' : metadata.route,
+      routeLabel: metadata.route === 'budget' ? 'Abrir visão geral' : metadata.routeLabel,
+    } : undefined,
+  };
+}
 
 export async function loadFinanceAssistantMessages(userId: string): Promise<FinanceAssistantMessage[]> {
   const { data, error } = await supabase

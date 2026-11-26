@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ArrowDownLeft, ArrowRight, ArrowUpRight, CalendarClock, ChartNoAxesCombined, ChevronRight, CircleCheck, Flag, ReceiptText, ShieldCheck, Target, Wallet } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useFinance } from '../../../context/FinanceContext';
+import { FinanceExpenseList } from './FinanceExpenseList';
 import { recentClosings } from '../../../domain/financeLedger';
 import type { MasterCategory, TransactionType } from '../../../types/finance';
 import { formatDatePT } from '../../../utils/date';
@@ -38,6 +39,7 @@ function GoalProgress({ title, amount, target, icon }: { title: string; amount: 
 
 export function FinanceOverviewTab() {
   const { user } = useAuth();
+  const [showExpenses, setShowExpenses] = useState(false);
   const {
     accounts, bills, debts, goals, emergencyFund, budget, selectedMonth, selectedMonthTransactions,
     availableCash, monthIncome, monthExpenses, monthInvestments, monthDebtsPaid,
@@ -105,7 +107,7 @@ export function FinanceOverviewTab() {
 
     <div className="fx-detail-grid">
       <section className="fx-panel">
-        <PanelHeading title="Despesas por categoria" action="Orçamento" onClick={() => setSubTab('budget')} />
+        <PanelHeading title="Despesas por categoria" action="Ver despesas" onClick={() => setShowExpenses(true)} />
         {categories.length > 0 ? <ul className="fx-categories">
           {categories.map(([key, amount]) => {
             const category = MASTER_CATEGORY_CONFIG[key];
@@ -172,5 +174,6 @@ export function FinanceOverviewTab() {
         </ul> : <Empty icon={<CircleCheck size={22} aria-hidden="true" />} text="Nenhuma dívida ativa." />}
       </section>
     </div>
+    {showExpenses && <FinanceExpenseList onClose={() => setShowExpenses(false)} />}
   </div>;
 }

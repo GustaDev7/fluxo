@@ -113,6 +113,6 @@ describe('financeAssistant', () => {
 
     const reply = buildFinanceAssistantWelcome(empty, 'Gustavo');
     expect(reply.content).toContain('Ainda não há dados suficientes');
-    expect(reply.metadata?.route).toBe('budget');
+    expect(reply.metadata?.route).toBe('overview');
   });
 });
