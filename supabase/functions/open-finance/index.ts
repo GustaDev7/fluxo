@@ -97,6 +97,12 @@ const moneyValue = (value: unknown): number | null => {
 const currencyCode = (value: unknown) => /^[A-Z]{3}$/.test(label(value)) ? label(value) : 'BRL';
 
 function belvoPage(result: BelvoRecord, listName: string) {
+  if (result.isError) {
+    const outputs = Array.isArray(result.content) ? result.content : [];
+    const codes = ['link_id', 'connection_id', 'account_id', 'date_from', 'date_to', 'start_date', 'end_date', 'permission', 'invalid', 'expired', 'required'];
+    const matched = codes.filter(code => outputs.some(block => typeof block?.text === 'string' && block.text.toLowerCase().includes(code)));
+    console.info('belvo_rejected', listName, matched);
+  }
   if (result.isError) throw new RequestError(502, 'O Belvo recusou a consulta de ' + listName + '.');
   let payload: unknown = result.structuredContent;
   if (payload == null && Array.isArray(result.content)) {
@@ -114,6 +120,7 @@ function belvoPage(result: BelvoRecord, listName: string) {
     next = field(obj, 'next', 'next_page', 'nextPage', 'next_cursor', 'nextCursor') ??
       field(record(obj.pagination) ?? {}, 'next', 'next_page', 'nextPage', 'next_cursor', 'nextCursor') ?? next;
     value = field(obj, listName, 'results', 'items', 'data', 'records', 'output');
+    if (value == null) console.info('belvo_shape', listName, Object.keys(obj).filter(key => /^[a-zA-Z_]{1,40}$/.test(key)).slice(0, 20));
   }
   throw new RequestError(502, 'O Belvo respondeu em um formato inesperado na consulta de ' + listName + '.');
 }
@@ -139,7 +146,9 @@ async function readBelvoBankData(
     const tool = tools.find(item => item.name === name);
     if (!tool) throw new RequestError(502, 'O Belvo não habilitou a consulta de ' + list + '.');
     const args = belvoArguments(tool, link, month);
-    if (tool.inputSchema?.required?.some(key => !(key in args))) {
+    const missing = (tool.inputSchema?.required ?? []).filter(key => !(key in args));
+    if (missing.length) {
+      console.info('belvo_missing', name, missing.filter(key => /^[a-zA-Z_]{1,40}$/.test(key)));
       throw new RequestError(502, 'O Belvo exige campos adicionais para consultar ' + list + '.');
     }
     const rows: BelvoRecord[] = [];
@@ -169,9 +178,13 @@ async function readBelvoBankData(
   const seen = new Set<string>();
   let skipped = 0;
   for (const connection of connections.slice(0, 10)) {
-    const link = label(field(connection, 'link_id', 'linkId', 'link', 'id')) ||
+    const link = label(field(connection, 'connection_id', 'connectionId', 'link_id', 'linkId', 'link', 'id')) ||
       label(record(connection.link)?.id);
-    if (!link) { skipped++; continue; }
+    if (!link) {
+      console.info('belvo_link_shape', Object.keys(connection).filter(key => /^[a-zA-Z_]{1,40}$/.test(key)).slice(0, 20));
+      skipped++;
+      continue;
+    }
     const [accountResult, transactionResult] = await Promise.allSettled([
       read('open_finance_list_accounts', 'accounts', link),
       read('open_finance_list_transactions', 'transactions', link),
