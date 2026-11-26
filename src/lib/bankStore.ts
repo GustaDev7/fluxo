@@ -30,6 +30,7 @@ export interface WidgetConfig {
   connectToken: string;
   connectorIds: number[];
   sandbox: boolean;
+  personal?: boolean;
   updateItem?: string;
 }
 

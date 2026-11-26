@@ -1,7 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.115.0';
 
 const apiOrigin = 'https://api.pluggy.ai';
-const products = ['ACCOUNTS', 'CREDIT_CARDS', 'TRANSACTIONS'];
+const meuPluggyConnector = 200;
+type PluggyMode = 'sandbox' | 'meu-pluggy' | 'production';
 const uuidPattern = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 
 class RequestError extends Error {
@@ -35,8 +36,24 @@ function uuid(value: unknown): string {
   return value;
 }
 
-function permitted(connector: Connector, sandbox: boolean) {
-  return connector.country === 'BR' && (sandbox ? connector.isSandbox === true : connector.isOpenFinance === true && connector.isSandbox === false);
+function permitted(connector: Connector, mode: PluggyMode) {
+  if (mode === 'meu-pluggy') return connector.id === meuPluggyConnector && connector.isSandbox === false;
+  return connector.country === 'BR' && (mode === 'sandbox' ? connector.isSandbox === true : connector.isOpenFinance === true && connector.isSandbox === false);
+}
+
+type PluggyCredentials = { clientId: string; clientSecret: string };
+
+function personalCredentials(actor: string): PluggyCredentials | undefined {
+  const raw = Deno.env.get('FLUXO_PLUGGY_PERSONAL_CREDENTIALS');
+  if (!raw) return;
+  let entries: unknown;
+  try { entries = JSON.parse(raw); }
+  catch { return; }
+  if (!entries || typeof entries !== 'object' || !Object.hasOwn(entries, actor)) return;
+  const entry = (entries as Record<string, Partial<PluggyCredentials> | null>)[actor];
+  if (typeof entry?.clientId !== 'string' || !entry.clientId.trim()
+    || typeof entry.clientSecret !== 'string' || !entry.clientSecret.trim()) return;
+  return { clientId: entry.clientId.trim(), clientSecret: entry.clientSecret.trim() };
 }
 
 async function readTransactions(account: Account, apiKey: string, since: string) {
@@ -65,6 +82,8 @@ async function readTransactions(account: Account, apiKey: string, since: string)
 Deno.serve(async request => {
   const mode = Deno.env.get('PLUGGY_MODE') ?? 'sandbox';
   const sandbox = mode === 'sandbox';
+  const personal = mode === 'meu-pluggy';
+  const configuredMode = sandbox || personal || mode === 'production';
   const appOrigin = Deno.env.get('FLUXO_APP_ORIGIN');
   const origin = request.headers.get('Origin');
   const headers = {
@@ -99,37 +118,39 @@ Deno.serve(async request => {
     if (authError || !user?.email_confirmed_at) throw new RequestError(401, 'Entre com uma conta de e-mail confirmado.');
     const payload = await request.json().catch(() => null);
     if (!payload || typeof payload.action !== 'string') throw new RequestError(400, 'Ação inválida.');
-    if (payload.action === 'status') {
-      return json({ sandbox, configured: Boolean(Deno.env.get('PLUGGY_CLIENT_ID') && Deno.env.get('PLUGGY_CLIENT_SECRET')) });
-    }
-    const clientId = Deno.env.get('PLUGGY_CLIENT_ID');
-    const clientSecret = Deno.env.get('PLUGGY_CLIENT_SECRET');
-    if (!clientId || !clientSecret) throw new RequestError(503, 'A aplicação Pluggy ainda precisa ser configurada.');
-    if (!sandbox && (mode !== 'production' || !appOrigin?.startsWith('https://'))) {
-      throw new RequestError(503, 'Configure a origem HTTPS do Fluxo antes de ativar bancos reais.');
-    }
     const actor = user.id;
+    const credentials = personal ? personalCredentials(actor) : {
+      clientId: Deno.env.get('PLUGGY_CLIENT_ID'),
+      clientSecret: Deno.env.get('PLUGGY_CLIENT_SECRET'),
+    };
+    const allowMode = configuredMode && (sandbox || !!appOrigin?.startsWith('https://'));
+    const configured = allowMode && Boolean(credentials?.clientId && credentials?.clientSecret);
+    if (payload.action === 'status') return json({ sandbox, personal, configured });
+    if (!configured || !credentials) {
+      throw new RequestError(503, 'A conexão bancária ainda precisa ser configurada para este login.');
+    }
     const allowedActions = ['connect', 'register', 'sync', 'disconnect', 'reconnect'];
     if (!allowedActions.includes(payload.action)) throw new RequestError(400, 'Ação inválida.');
 
-    const { apiKey } = await pluggy<{ apiKey: string }>('/auth', 'POST', undefined, { clientId, clientSecret });
+    const { apiKey } = await pluggy<{ apiKey: string }>('/auth', 'POST', undefined, credentials);
     if (payload.action === 'connect') {
-      const response = await pluggy<{ results: Connector[] }>(
-        sandbox ? '/connectors?sandbox=true' : '/connectors?isOpenFinance=true', 'GET', apiKey,
-      );
-      const connectorIds = response.results.filter(connector => permitted(connector, sandbox)).map(connector => connector.id);
+      const connectorPath = personal ? '/connectors/' + meuPluggyConnector : sandbox ? '/connectors?sandbox=true' : '/connectors?isOpenFinance=true';
+      const available = personal
+        ? [await pluggy<Connector>(connectorPath, 'GET', apiKey)]
+        : (await pluggy<{ results: Connector[] }>(connectorPath, 'GET', apiKey)).results;
+      const connectorIds = available.filter(connector => permitted(connector, mode)).map(connector => connector.id);
       if (!connectorIds.length) throw new RequestError(503, 'Nenhum conector habilitado neste ambiente.');
       const intent = await rpc<string>('fluxo_bank_intent', { actor });
       const { accessToken } = await pluggy<{ accessToken: string }>('/connect_token', 'POST', apiKey, {
         options: { clientUserId: intent, avoidDuplicates: true },
       });
-      return json({ connectToken: accessToken, connectorIds, sandbox });
+      return json({ connectToken: accessToken, connectorIds, sandbox, personal });
     }
 
     if (payload.action === 'register') {
       const itemId = uuid(payload.itemId);
       const item = await pluggy<Item>('/items/' + itemId, 'GET', apiKey);
-      if (!permitted(item.connector, sandbox)) throw new RequestError(403, 'Conector indisponível neste ambiente.');
+      if (!permitted(item.connector, mode)) throw new RequestError(403, 'Conector indisponível neste ambiente.');
       const target = await rpc<string>('fluxo_register_bank', {
         actor, item: itemId, intent: uuid(item.clientUserId), institution_name: item.connector.name.slice(0, 120),
       });
@@ -150,9 +171,9 @@ Deno.serve(async request => {
     if (payload.action === 'reconnect') {
       const { item } = await command('reconnect');
       const current = await pluggy<Item>('/items/' + item, 'GET', apiKey);
-      if (!permitted(current.connector, sandbox)) throw new RequestError(403, 'Conector indisponível neste ambiente.');
+      if (!permitted(current.connector, mode)) throw new RequestError(403, 'Conector indisponível neste ambiente.');
       const { accessToken } = await pluggy<{ accessToken: string }>('/connect_token', 'POST', apiKey, { itemId: item });
-      return json({ connectToken: accessToken, connectorIds: [current.connector.id], sandbox, updateItem: item });
+      return json({ connectToken: accessToken, connectorIds: [current.connector.id], sandbox, personal, updateItem: item });
     }
 
     const { item, revision } = await command('sync');
@@ -161,7 +182,7 @@ Deno.serve(async request => {
     });
     try {
       const current = await pluggy<Item>('/items/' + item, 'GET', apiKey);
-      if (!permitted(current.connector, sandbox)) throw new RequestError(403, 'Conector indisponível neste ambiente.');
+      if (!permitted(current.connector, mode)) throw new RequestError(403, 'Conector indisponível neste ambiente.');
       if (current.status !== 'UPDATED') {
         const outcome = ['UPDATING', 'CREATED'].includes(current.status) ? 'pending' : 'action_required';
         await finish(outcome);

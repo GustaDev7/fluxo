@@ -25,7 +25,22 @@ O modo padrão da função `open-finance` é `sandbox`. A função aceita apenas
 
 Use `supabase functions deploy open-finance --project-ref kwhbkkvoahxztzzscdnm --use-api` após autenticar o Supabase CLI. A função valida o JWT de sessão pelo Supabase Auth e verifica o titular antes de registrar, atualizar, reautorizar ou desconectar uma instituição. O CPF, a senha do banco e os tokens do provedor ficam fora do banco do Fluxo. A atualização do extrato é iniciada na interface e consulta os dados disponíveis no provedor.
 
-O sandbox tem dados sintéticos. A opção Meu Pluggy gratuita é documentada para leitura dos próprios dados. Bancos reais dentro do produto dependem de um provedor e de condições comerciais compatíveis com dois titulares.
+O sandbox tem dados sintéticos.
+
+## Meu Pluggy com dois titulares
+
+1. Crie os dois logins particulares no Fluxo e confirme seus e-mails. Copie o UUID de cada login em **Authentication → Users**. Use logins particulares para dados reais.
+2. Em **Edge Functions → Secrets**, configure `PLUGGY_MODE` como `meu-pluggy` e `FLUXO_APP_ORIGIN` com a origem HTTPS exata em que os dois abrirão o Fluxo, sem barra final.
+3. No secret `FLUXO_PLUGGY_PERSONAL_CREDENTIALS`, coloque o JSON abaixo. Use o par do Dashboard de cada titular com o UUID do seu login no Fluxo.
+
+```json
+{
+  "uuid-do-login-1": { "clientId": "id-do-titular-1", "clientSecret": "secret-do-titular-1" },
+  "uuid-do-login-2": { "clientId": "id-do-titular-2", "clientSecret": "secret-do-titular-2" }
+}
+```
+
+Cada login obtém tokens de conexão apenas com o próprio par de chaves. O modo pessoal aceita o conector MeuPluggy (200). Dentro de **Bancos e extratos**, cada titular inicia **Conectar Meu Pluggy** e seleciona suas conexões já autorizadas no portal. O Fluxo começa com as contas privadas. Ao abrir a aba pessoal, conexões com mais de 12 horas desde a última atualização são atualizadas automaticamente. Use **Atualizar** para consultar os dados sob demanda.
 
 ## Banco e verificações
 

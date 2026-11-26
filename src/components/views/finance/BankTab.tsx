@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Banknote, ChevronLeft, ChevronRight, Landmark, Link2, LockKeyhole, Upload } from 'lucide-react';
 import { bankAction, importStatement, loadBankOverview, removeStatement, shareBank, type BankConnection, type BankOverview, type WidgetConfig } from '../../../lib/bankStore';
 import { errorMessage, type Workspace } from '../../../lib/workspaces';
@@ -24,11 +24,12 @@ export function BankTab({ workspace, couple }: { workspace: Workspace; couple?: 
   const [loadKey, setLoadKey] = useState(0);
   const [loadError, setLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [provider, setProvider] = useState<{ configured: boolean; sandbox: boolean }>();
+  const [provider, setProvider] = useState<{ configured: boolean; sandbox: boolean; personal?: boolean }>();
   const [widget, setWidget] = useState<WidgetConfig & { connectionId?: string }>();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [problem, setProblem] = useState('');
+  const refreshedConnections = useRef(new Set<string>());
   const personal = workspace.kind === 'personal';
 
   useEffect(() => {
@@ -44,11 +45,31 @@ export function BankTab({ workspace, couple }: { workspace: Workspace; couple?: 
   useEffect(() => {
     if (!personal) return;
     let active = true;
-    void bankAction<{ configured: boolean; sandbox: boolean }>('status').then(next => {
+    void bankAction<{ configured: boolean; sandbox: boolean; personal?: boolean }>('status').then(next => {
       if (active) setProvider(next);
     }).catch(() => undefined);
     return () => { active = false; };
   }, [personal]);
+
+  useEffect(() => {
+    if (!personal || !provider?.configured || !provider.personal || loading || busy || loadError) return;
+    const stale = data?.connections.filter(connection =>
+      connection.owned && connection.source === 'pluggy' && connection.status === 'ready' &&
+      connection.syncedAt && Date.now() - Date.parse(connection.syncedAt) >= 12 * 60 * 60 * 1000
+      && !refreshedConnections.current.has(connection.id)
+    );
+    if (!stale?.length) return;
+    let active = true;
+    for (const connection of stale) refreshedConnections.current.add(connection.id);
+    void (async () => {
+      for (const connection of stale) {
+        if (!active) break;
+        await bankAction('sync', { connectionId: connection.id }).catch(() => undefined);
+      }
+      if (active) setLoadKey(key => key + 1);
+    })();
+    return () => { active = false; };
+  }, [personal, provider, data, loading, busy, loadError]);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -100,8 +121,8 @@ export function BankTab({ workspace, couple }: { workspace: Workspace; couple?: 
       </form>
       <div className="rounded-3xl border border-violet-950 bg-[#151021] p-5">
         <div className="flex items-start gap-3"><div className="rounded-xl bg-fuchsia-500/15 p-2.5 text-fuchsia-300"><Link2 className="size-5" /></div>
-          <div><h2 className="font-black">Open Finance</h2><p className="mt-1 text-sm text-neutral-400">{provider?.configured ? provider.sandbox ? 'Ambiente de testes. Use apenas as contas de demonstração.' : 'Cada titular autoriza suas próprias conexões.' : 'A conexão automática depende de um provedor. A importação por arquivo já está disponível.'}</p></div></div>
-        {provider?.configured && <button className={control + ' mt-4'} disabled={busy} onClick={() => openWidget()}>{provider.sandbox ? 'Conectar banco de teste' : 'Conectar meu banco'}</button>}
+          <div><h2 className="font-black">Open Finance</h2><p className="mt-1 text-sm text-neutral-400">{provider?.configured ? provider.sandbox ? 'Ambiente de testes. Use apenas as contas de demonstração.' : provider.personal ? 'Autorize o acesso aos bancos que você já conectou no seu Meu Pluggy. As contas começam privadas.' : 'Cada titular autoriza suas próprias conexões.' : 'A conexão bancária aguarda a configuração do provedor.'}</p></div></div>
+        {provider?.configured && <button className={control + ' mt-4'} disabled={busy} onClick={() => openWidget()}>{provider.sandbox ? 'Conectar banco de teste' : provider.personal ? 'Conectar Meu Pluggy' : 'Conectar meu banco'}</button>}
       </div>
     </div> : <div className="rounded-3xl border border-violet-950 bg-[#151021] p-5">
       <div className="flex items-center gap-2"><LockKeyhole className="size-5 text-violet-300" /><h2 className="font-black">Extratos compartilhados</h2></div>
@@ -155,7 +176,7 @@ export function BankTab({ workspace, couple }: { workspace: Workspace; couple?: 
 
     {widget && <Suspense fallback={<p role="status" className="text-sm text-neutral-400">Abrindo a conexão bancária…</p>}>
       <PluggyConnect connectToken={widget.connectToken} connectorIds={widget.connectorIds} includeSandbox={widget.sandbox}
-        products={['ACCOUNTS', 'CREDIT_CARDS', 'TRANSACTIONS']} updateItem={widget.updateItem} theme="dark"
+        products={widget.personal ? undefined : ['ACCOUNTS', 'CREDIT_CARDS', 'TRANSACTIONS']} updateItem={widget.updateItem} theme="dark"
         onClose={() => setWidget(undefined)} onError={() => { setWidget(undefined); setProblem('A janela do provedor encontrou um erro.'); }}
         onSuccess={({ item }) => {
           setWidget(undefined);
