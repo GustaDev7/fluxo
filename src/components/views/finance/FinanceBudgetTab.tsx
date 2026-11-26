@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowDownUp, BarChart3, CalendarDays, CheckCircle2, CircleDollarSign, Copy, LayoutGrid, Lightbulb, List, MoreHorizontal, Pencil, Plus, ReceiptText, Save, Search, Settings, Sparkles, Table2, Trash2, X } from 'lucide-react';
 import { useFinance } from '../../../context/FinanceContext';
 import { BudgetCategory, BudgetIncomeSource, CreditCard, FinanceAccount, FinanceTransaction, MasterCategory, ZeroBasedBudget } from '../../../types/finance';
-import { calculateBudget, copyBudgetToMonth, resolveCategory, transactionMatchesBudgetCategory } from '../../../domain/budgetEngine';
+import { calculateBudget, copyBudgetToMonth, plannedBudgetOutflow, resolveCategory, transactionMatchesBudgetCategory } from '../../../domain/budgetEngine';
 import { MASTER_CATEGORY_CONFIG, formatBRL } from '../../../utils/financeUtils';
 import { getTodayDateString } from '../../../utils/date';
+import { recentClosings } from '../../../domain/financeLedger';
 
 const AUVP: Array<[MasterCategory, string]> = [
   ['custos_fixos', '40'], ['conforto', '13.5'], ['metas', '11.3'], ['prazeres', '5'],
@@ -41,7 +42,7 @@ const dateForBudgetMonth = (month: string): string => {
 };
 
 export const FinanceBudgetTab: React.FC = () => {
-  const { budget, selectedMonth, setSelectedMonth, updateBudgetPlan, transactions, monthlyClosingHistory, accounts, creditCards, openTransactionModal, addTransaction, updateTransaction, deleteTransaction } = useFinance();
+  const { budget, selectedMonth, setSelectedMonth, updateBudgetPlan, transactions, monthlyBudgets, monthlyClosingHistory, accounts, creditCards, openTransactionModal, addTransaction, updateTransaction, deleteTransaction } = useFinance();
   const [draft, setDraft] = useState<ZeroBasedBudget>(() => prepareBudget(budget));
   const [editing, setEditing] = useState(false);
   const [suggestion, setSuggestion] = useState(false);
@@ -66,15 +67,19 @@ export const FinanceBudgetTab: React.FC = () => {
   const actualTotal = useMemo(() => Object.values(actual).reduce<number>((sum, value) => sum + Number(value), 0), [actual]);
   const monthlyEvolution = useMemo(() => {
     const formatter = new Intl.DateTimeFormat('pt-BR', { month: 'short', timeZone: 'UTC' });
-    const rows = monthlyClosingHistory.slice(-11).map((closing) => ({
-      month: closing.month,
-      label: formatter.format(new Date(`${closing.month}-01T00:00:00Z`)).replace('.', ''),
-      planned: closing.totalIncome,
-      actual: closing.totalExpenses + closing.totalInvested + closing.debtsPaid,
-    }));
-    const current = { month: draft.month, label: formatter.format(new Date(`${draft.month}-01T00:00:00Z`)).replace('.', ''), planned: result.totalAllocated, actual: actualTotal };
-    return [...rows.filter((row) => row.month !== draft.month), current].slice(-12);
-  }, [monthlyClosingHistory, draft.month, result.totalAllocated, actualTotal]);
+    const label = (month: string) => formatter.format(new Date(`${month}-01T00:00:00Z`)).replace('.', '');
+    const rows = recentClosings(monthlyClosingHistory.filter((closing) => closing.month < draft.month), draft.month, 11)
+      .map((closing) => {
+        const savedBudget = monthlyBudgets.find((item) => item.month === closing.month);
+        return {
+          month: closing.month,
+          label: label(closing.month),
+          planned: closing.plannedOutflow ?? (savedBudget ? plannedBudgetOutflow(savedBudget) : null),
+          actual: closing.totalExpenses + closing.totalInvested + closing.debtsPaid,
+        };
+      });
+    return [...rows, { month: draft.month, label: label(draft.month), planned: result.totalAllocated, actual: actualTotal }];
+  }, [monthlyBudgets, monthlyClosingHistory, draft.month, result.totalAllocated, actualTotal]);
 
   const updateCategory = (id: string, patch: Partial<BudgetCategory>) => setDraft((current) => {
     const income = calculateBudget(current).plannedIncome;
@@ -236,10 +241,10 @@ const BudgetCategoryDetail = ({ category, month, transactions, accounts, creditC
   </section></div>;
 };
 
-const BudgetEvolution = ({ rows }: { rows: Array<{ month: string; label: string; planned: number; actual: number }> }) => {
-  const max = Math.max(1, ...rows.flatMap((row) => [row.planned, row.actual]));
+const BudgetEvolution = ({ rows }: { rows: Array<{ month: string; label: string; planned: number | null; actual: number }> }) => {
+  const max = Math.max(1, ...rows.flatMap((row) => [row.planned ?? 0, row.actual]));
   return <section className="mt-4 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="text-sm font-black">Evolução mensal</h3><p className="mt-1 text-xs text-neutral-500">Planejado e realizado com base nos fechamentos e lançamentos registrados.</p></div><div className="flex gap-4 text-xs"><span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-indigo-500"/>Planejado</span><span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-emerald-400"/>Realizado</span></div></div>
-    {rows.length ? <div className="mt-5 flex h-48 items-end gap-2 overflow-x-auto border-b border-neutral-200 pb-1 dark:border-neutral-800">{rows.map((row) => <div key={row.month} className="flex h-full min-w-12 flex-1 flex-col items-center justify-end"><div className="flex h-[155px] w-full max-w-12 items-end justify-center gap-1"><div className="w-3 rounded-t bg-indigo-500" style={{ height: `${Math.max(2, row.planned / max * 100)}%` }} title={`Planejado: ${formatBRL(row.planned)}`}/><div className="w-3 rounded-t bg-emerald-400" style={{ height: `${Math.max(2, row.actual / max * 100)}%` }} title={`Realizado: ${formatBRL(row.actual)}`}/></div><span className="mt-2 text-[11px] capitalize text-neutral-500">{row.label}</span></div>)}</div> : <p className="py-12 text-center text-sm text-neutral-500">Ainda não há dados mensais para exibir.</p>}
+    {rows.length ? <div className="mt-5 flex h-48 items-end gap-2 overflow-x-auto border-b border-neutral-200 pb-1 dark:border-neutral-800">{rows.map((row) => <div key={row.month} className="flex h-full min-w-12 flex-1 flex-col items-center justify-end"><div className="flex h-[155px] w-full max-w-12 items-end justify-center gap-1">{row.planned === null ? <span className="w-3 text-center text-neutral-500" title="Sem plano salvo">–</span> : <div className="w-3 rounded-t bg-indigo-500" style={{ height: `${Math.max(2, row.planned / max * 100)}%` }} title={`Planejado: ${formatBRL(row.planned)}`}/>}<div className="w-3 rounded-t bg-emerald-400" style={{ height: `${Math.max(2, row.actual / max * 100)}%` }} title={`Realizado: ${formatBRL(row.actual)}`}/></div><span className="mt-2 text-[11px] capitalize text-neutral-500">{row.label}</span></div>)}</div> : <p className="py-12 text-center text-sm text-neutral-500">Ainda não há dados mensais para exibir.</p>}
   </section>;
 };

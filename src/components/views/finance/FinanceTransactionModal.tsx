@@ -4,6 +4,7 @@ import { TransactionType, MasterCategory } from '../../../types/finance';
 import { MASTER_CATEGORY_CONFIG, smartParseTransaction } from '../../../utils/financeUtils';
 import { getTodayDateString } from '../../../utils/date';
 import { budgetCategoryTag } from '../../../domain/budgetEngine';
+import { parseMoneyInput } from '../../../domain/financeLedger';
 import {
   X,
   Plus,
@@ -93,10 +94,8 @@ export const FinanceTransactionModal: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const rawAmount = amount.trim();
-    const decimalAmount = rawAmount.includes(',') ? rawAmount.replace(/\.(?=\d{3}(?:[.,]|$))/g, '').replace(',', '.') : rawAmount;
-    const numAmount = Number(decimalAmount);
-    if (!/^\d+(\.\d{1,2})?$/.test(decimalAmount) || !Number.isFinite(numAmount) || numAmount < 0.01) {
+    const numAmount = parseMoneyInput(amount);
+    if (numAmount === null) {
       setSubmitError('Informe um valor válido com até duas casas decimais.');
       return;
     }

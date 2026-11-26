@@ -40,6 +40,7 @@ export const FinanceView: React.FC = () => {
     selectedMonth,
     setSelectedMonth,
     isSelectedMonthClosed,
+    monthlyClosingHistory,
     saveMonthlyClosing,
     exportFinanceBackup,
   } = useFinance();
@@ -48,6 +49,12 @@ export const FinanceView: React.FC = () => {
   const [isClosingOpen, setIsClosingOpen] = useState(false);
   const [closingRating, setClosingRating] = useState<MonthlyClosing['rating']>('good');
   const [closingNotes, setClosingNotes] = useState('');
+  const openClosing = () => {
+    const savedClosing = monthlyClosingHistory.find((closing) => closing.month === selectedMonth);
+    setClosingRating(savedClosing?.rating ?? 'good');
+    setClosingNotes(savedClosing?.notes ?? '');
+    setIsClosingOpen(true);
+  };
 
   useEffect(() => {
     if (activeSubTab === 'transactions' || activeSubTab === 'accounts') setActiveSubTab('overview');
@@ -125,7 +132,7 @@ export const FinanceView: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 gap-2 sm:flex">
             <button onClick={exportFinanceBackup} className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 px-2.5 text-[11px] font-bold hover:bg-neutral-50 sm:min-h-10 sm:gap-2 sm:px-3 sm:text-xs dark:border-neutral-700 dark:hover:bg-neutral-800"><Download className="h-4 w-4" />Backup</button>
-            <button onClick={() => setIsClosingOpen(true)} className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-neutral-900 px-2.5 text-[11px] font-bold text-white hover:bg-neutral-800 sm:min-h-10 sm:gap-2 sm:px-3 sm:text-xs dark:bg-neutral-100 dark:text-neutral-900"><LockKeyhole className="h-4 w-4" /><span className="truncate">{isSelectedMonthClosed ? 'Atualizar mês' : 'Fechar mês'}</span></button>
+            <button onClick={openClosing} className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-neutral-900 px-2.5 text-[11px] font-bold text-white hover:bg-neutral-800 sm:min-h-10 sm:gap-2 sm:px-3 sm:text-xs dark:bg-neutral-100 dark:text-neutral-900"><LockKeyhole className="h-4 w-4" /><span className="truncate">{isSelectedMonthClosed ? 'Atualizar mês' : 'Fechar mês'}</span></button>
           </div>
         </section>
 
@@ -196,8 +203,8 @@ export const FinanceView: React.FC = () => {
       </div>}
 
       {isClosingOpen && <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm">
-        <form onSubmit={(event) => { event.preventDefault(); saveMonthlyClosing(closingRating, closingNotes.trim()); setIsClosingOpen(false); }} className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white p-5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
-          <div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-black">Fechamento de {new Date(`${selectedMonth}-01T00:00:00Z`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</h2><p className="mt-1 text-xs text-neutral-500">Salvaremos uma fotografia dos resultados do período. Você poderá atualizar este fechamento depois.</p></div><button type="button" aria-label="Fechar" onClick={() => setIsClosingOpen(false)} className="rounded-xl p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800"><X className="h-5 w-5" /></button></div>
+        <form role="dialog" aria-modal="true" aria-labelledby="closing-title" onSubmit={(event) => { event.preventDefault(); saveMonthlyClosing(closingRating, closingNotes.trim()); setIsClosingOpen(false); }} className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white p-5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="flex items-start justify-between gap-3"><div><h2 id="closing-title" className="text-lg font-black">Fechamento de {new Date(`${selectedMonth}-01T00:00:00Z`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</h2><p className="mt-1 text-xs text-neutral-500">Salvaremos uma fotografia dos resultados do período. Você poderá atualizar este fechamento depois.</p></div><button type="button" aria-label="Fechar" onClick={() => setIsClosingOpen(false)} className="rounded-xl p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800"><X className="h-5 w-5" /></button></div>
           <label className="mt-5 block"><span className="mb-1 block text-xs font-bold text-neutral-600 dark:text-neutral-300">Como foi o mês?</span><select value={closingRating} onChange={(event) => setClosingRating(event.target.value as MonthlyClosing['rating'])} className="field-input"><option value="excellent">Excelente</option><option value="good">Bom</option><option value="regular">Regular</option><option value="poor">Precisa de atenção</option></select></label>
           <label className="mt-3 block"><span className="mb-1 block text-xs font-bold text-neutral-600 dark:text-neutral-300">Observações</span><textarea value={closingNotes} onChange={(event) => setClosingNotes(event.target.value)} rows={4} placeholder="O que funcionou e o que deve mudar no próximo mês?" className="field-input resize-none" /></label>
           <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setIsClosingOpen(false)} className="min-h-11 rounded-xl border border-neutral-200 px-4 text-sm font-bold dark:border-neutral-700">Cancelar</button><button type="submit" className="min-h-11 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white">Salvar fechamento</button></div>

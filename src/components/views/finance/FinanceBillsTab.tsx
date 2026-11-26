@@ -3,7 +3,8 @@ import { useFinance } from '../../../context/FinanceContext';
 import { formatBRL } from '../../../utils/financeUtils';
 import { FinanceBill, MasterCategory } from '../../../types/finance';
 import { MASTER_CATEGORY_CONFIG } from '../../../utils/financeUtils';
-import { getTodayDateString } from '../../../utils/date';
+import { formatDatePT, getTodayDateString } from '../../../utils/date';
+import { parseMoneyInput } from '../../../domain/financeLedger';
 import {
   Calendar,
   AlertTriangle,
@@ -23,6 +24,7 @@ import {
 export const FinanceBillsTab: React.FC = () => {
   const {
     bills,
+    transactions,
     accounts,
     creditCards,
     payBill,
@@ -48,6 +50,9 @@ export const FinanceBillsTab: React.FC = () => {
   const [editDueDate, setEditDueDate] = useState('');
   const [editCategory, setEditCategory] = useState<MasterCategory>('custos_fixos');
   const [editRecurrence, setEditRecurrence] = useState<'none' | 'monthly' | 'weekly' | 'yearly'>('none');
+  const [billToPay, setBillToPay] = useState<FinanceBill | null>(null);
+  const [paidOn, setPaidOn] = useState('');
+  const [amountError, setAmountError] = useState('');
 
   useEffect(() => {
     setNewDueDate((current) => current.startsWith(selectedMonth) ? current : `${selectedMonth}-01`);
@@ -55,11 +60,16 @@ export const FinanceBillsTab: React.FC = () => {
 
   const handleCreateBill = (e: React.FormEvent) => {
     e.preventDefault();
-    const amountVal = parseFloat(newAmount.replace(',', '.'));
-    if (!newTitle || !amountVal) return;
+    const amountVal = parseMoneyInput(newAmount);
+    if (amountVal === null) {
+      setAmountError('Informe um valor válido, como 1.234,56.');
+      return;
+    }
+    if (!newTitle.trim()) return;
+    setAmountError('');
 
     addBill({
-      title: newTitle,
+      title: newTitle.trim(),
       amount: amountVal,
       dueDate: newDueDate,
       type: 'expense',
@@ -86,6 +96,7 @@ export const FinanceBillsTab: React.FC = () => {
   };
 
   const openEditBill = (bill: FinanceBill) => {
+    setAmountError('');
     setEditingBill(bill);
     setEditTitle(bill.title);
     setEditAmount(String(bill.amount).replace('.', ','));
@@ -97,8 +108,13 @@ export const FinanceBillsTab: React.FC = () => {
   const handleUpdateBill = (event: React.FormEvent) => {
     event.preventDefault();
     if (!editingBill) return;
-    const amount = Number(editAmount.replace(',', '.'));
-    if (!editTitle.trim() || !Number.isFinite(amount) || amount <= 0 || !editDueDate) return;
+    const amount = parseMoneyInput(editAmount);
+    if (amount === null) {
+      setAmountError('Informe um valor válido, como 1.234,56.');
+      return;
+    }
+    if (!editTitle.trim() || !editDueDate) return;
+    setAmountError('');
     updateBill(editingBill.id, {
       title: editTitle.trim(),
       amount,
@@ -110,6 +126,12 @@ export const FinanceBillsTab: React.FC = () => {
   };
 
   const paidBills = bills.filter((b) => b.status === 'paid' && b.dueDate.startsWith(selectedMonth));
+  const paymentDates = new Map(transactions.filter((transaction) => transaction.linkedBillId)
+    .map((transaction) => [transaction.linkedBillId, transaction.date]));
+  const openPayment = (bill: FinanceBill) => {
+    setPaidOn(getTodayDateString());
+    setBillToPay(bill);
+  };
   const totalPendingAmount = [...overdueBills, ...todayBills, ...upcomingBills].reduce(
     (acc, b) => acc + b.amount,
     0
@@ -130,7 +152,7 @@ export const FinanceBillsTab: React.FC = () => {
         </div>
 
         <button
-          onClick={() => setIsAddBillOpen(true)}
+          onClick={() => { setAmountError(''); setIsAddBillOpen(true); }}
           className="flex items-center gap-1.5 rounded-2xl bg-neutral-900 px-4 py-2 text-xs font-bold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 transition-colors shadow-sm self-start sm:self-auto"
         >
           <Plus className="h-4 w-4" />
@@ -229,6 +251,7 @@ export const FinanceBillsTab: React.FC = () => {
               Salvar Conta
             </button>
           </div>
+          {amountError && <p role="alert" className="text-xs font-semibold text-rose-500">{amountError}</p>}
         </form>
       )}
 
@@ -279,6 +302,7 @@ export const FinanceBillsTab: React.FC = () => {
               <button type="button" onClick={() => setEditingBill(null)} className="min-h-11 rounded-xl border border-neutral-200 px-4 text-sm font-bold dark:border-neutral-700">Cancelar</button>
               <button type="submit" className="min-h-11 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white hover:bg-indigo-500">Salvar alterações</button>
             </div>
+            {amountError && <p role="alert" className="text-xs font-semibold text-rose-500">{amountError}</p>}
           </form>
         </div>
       )}
@@ -300,7 +324,7 @@ export const FinanceBillsTab: React.FC = () => {
               <BillCard
                 key={bill.id}
                 bill={bill}
-                onPay={() => payBill(bill.id)}
+                onPay={() => openPayment(bill)}
                 onEdit={() => openEditBill(bill)}
                 onDelete={() => handleDeleteBill(bill)}
                 isOverdue
@@ -325,7 +349,7 @@ export const FinanceBillsTab: React.FC = () => {
               <BillCard
                 key={bill.id}
                 bill={bill}
-                onPay={() => payBill(bill.id)}
+                onPay={() => openPayment(bill)}
                 onEdit={() => openEditBill(bill)}
                 onDelete={() => handleDeleteBill(bill)}
               />
@@ -353,7 +377,7 @@ export const FinanceBillsTab: React.FC = () => {
               <BillCard
                 key={bill.id}
                 bill={bill}
-                onPay={() => payBill(bill.id)}
+                onPay={() => openPayment(bill)}
                 onEdit={() => openEditBill(bill)}
                 onDelete={() => handleDeleteBill(bill)}
               />
@@ -387,7 +411,9 @@ export const FinanceBillsTab: React.FC = () => {
                       {bill.title}
                     </span>
                     <div className="text-[11px] text-neutral-400">
-                      Vencimento: {bill.dueDate} • Pago
+                      Vencimento em {formatDatePT(bill.dueDate)} · {paymentDates.has(bill.id)
+                        ? 'Pago em ' + formatDatePT(paymentDates.get(bill.id))
+                        : 'Pago'}
                     </div>
                   </div>
                 </div>
@@ -402,6 +428,20 @@ export const FinanceBillsTab: React.FC = () => {
           </div>
         </div>
       )}
+      {billToPay && <div className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4 backdrop-blur-sm">
+        <form role="dialog" aria-modal="true" aria-labelledby="bill-payment-title" className="w-full max-w-sm space-y-4 rounded-3xl border border-neutral-800 bg-neutral-900 p-5 shadow-2xl"
+          onSubmit={(event) => { event.preventDefault(); payBill(billToPay.id, paidOn); setBillToPay(null); }}>
+          <h3 id="bill-payment-title" className="text-lg font-black">Registrar pagamento</h3>
+          <p className="text-sm text-neutral-400">{billToPay.title} · {formatBRL(billToPay.amount)}</p>
+          <label className="block text-sm font-semibold">Data do pagamento
+            <input type="date" required max={getTodayDateString()} value={paidOn} onChange={(event) => setPaidOn(event.target.value)} className="field-input mt-2" />
+          </label>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setBillToPay(null)} className="rounded-xl border border-neutral-700 px-3 py-2 text-sm font-semibold">Cancelar</button>
+            <button type="submit" className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-bold text-white">Confirmar pagamento</button>
+          </div>
+        </form>
+      </div>}
     </div>
   );
 };
@@ -449,7 +489,7 @@ const BillCard: React.FC<BillCardProps> = ({ bill, onPay, onEdit, onDelete, isOv
           </div>
 
           <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-            <span>Vencimento: {bill.dueDate}</span>
+            <span>Vencimento: {formatDatePT(bill.dueDate)}</span>
             <span>•</span>
             <span style={{ color: catConfig?.color }} className="font-semibold">
               {catConfig?.name || bill.masterCategory}
