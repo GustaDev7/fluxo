@@ -1,77 +1,176 @@
-import React, { useMemo } from 'react';
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, CircleCheck, Lightbulb, Plus, ShieldCheck, Target, TrendingUp, Wallet } from 'lucide-react';
-import { useFinance } from '../../../context/FinanceContext';
+import type { ReactNode } from 'react';
+import { ArrowDownLeft, ArrowRight, ArrowUpRight, CalendarClock, ChartNoAxesCombined, ChevronRight, CircleCheck, Flag, ReceiptText, ShieldCheck, Target, Wallet } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
-import { MASTER_CATEGORY_CONFIG, formatBRL } from '../../../utils/financeUtils';
+import { useFinance } from '../../../context/FinanceContext';
 import { recentClosings } from '../../../domain/financeLedger';
+import type { MasterCategory, TransactionType } from '../../../types/finance';
+import { formatDatePT } from '../../../utils/date';
+import { formatBRL, MASTER_CATEGORY_CONFIG } from '../../../utils/financeUtils';
 
-const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string; key?: React.Key }) => <section className={`rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm sm:p-4 dark:border-neutral-800 dark:bg-neutral-900 ${className}`}>{children}</section>;
-const Title = ({ children, action, onClick }: { children: React.ReactNode; action?: string; onClick?: () => void }) => <div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-black">{children}</h3>{action && <button onClick={onClick} className="text-[11px] font-bold text-indigo-500">{action} →</button>}</div>;
-
-export const FinanceOverviewTab: React.FC = () => {
-  const { user } = useAuth();
-  const { accounts, transactions, bills, debts, goals, emergencyFund, budget, selectedMonth, isSelectedMonthClosed, availableCash, monthIncome, monthExpenses, monthInvestments, monthDebtsPaid, netWorthSummary, monthlyClosingHistory, zeroBasedStatus, overdueBills, setSubTab, openTransactionModal } = useFinance();
-  const name = String(user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'usuário').split(' ')[0];
-  const income = monthIncome;
-  const balance = income - monthExpenses - monthInvestments - monthDebtsPaid;
-  const usage = income > 0 ? monthExpenses / income * 100 : 0;
-  const activeDebts = debts.filter((item) => !['paid', 'cancelled'].includes(item.status));
-  const month = selectedMonth;
-  const pendingBills = bills.filter((item) => item.type !== 'income' && item.dueDate.startsWith(selectedMonth) && item.status !== 'paid');
-  const pendingBillsTotal = pendingBills.reduce((sum, item) => sum + item.amount, 0);
-  const freeAfterCommitments = balance - pendingBillsTotal;
-  const monthLabel = new Date(`${selectedMonth}-01T00:00:00Z`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-  const priority = overdueBills.length > 0
-    ? { text: `Regularize ${overdueBills.length} ${overdueBills.length === 1 ? 'compromisso atrasado' : 'compromissos atrasados'}.`, tab: 'bills' as const }
-    : balance < 0
-      ? { text: 'Revise os gastos do mês para recuperar o saldo.', tab: 'budget' as const }
-      : zeroBasedStatus.status !== 'balanced'
-        ? { text: 'Dê um destino ao saldo ainda não planejado.', tab: 'budget' as const }
-        : emergencyFund.currentAmount < emergencyFund.targetAmount
-          ? { text: 'Direcione parte do saldo para sua reserva.', tab: 'goals' as const }
-          : { text: 'Mês sob controle. Continue acompanhando.', tab: 'overview' as const };
-  const categories = useMemo(() => { const totals: Record<string, number> = {}; transactions.filter((item) => item.type === 'expense' && item.date.startsWith(month)).forEach((item) => { totals[item.masterCategory] = (totals[item.masterCategory] || 0) + item.amount; }); return Object.entries(totals).filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1]); }, [transactions, month]);
-  const donut = useMemo(() => { if (!categories.length || monthExpenses <= 0) return 'conic-gradient(#262626 0 100%)'; let cursor = 0; return `conic-gradient(${categories.map(([key, value]) => { const start = cursor; cursor += value / monthExpenses * 100; return `${MASTER_CATEGORY_CONFIG[key as keyof typeof MASTER_CATEGORY_CONFIG]?.color || '#6366f1'} ${start}% ${cursor}%`; }).join(',')})`; }, [categories, monthExpenses]);
-  const history = useMemo(() => recentClosings(
-    monthlyClosingHistory.filter((item) => Number.isFinite(item.netWorth)), month, 12,
-  ).map((closing) => ({ month: closing.month, value: closing.netWorth! })), [monthlyClosingHistory, month]);
-  const historyMax = Math.max(1, ...history.map((item) => Math.abs(item.value)));
-
-  return <div className="space-y-4">
-    <header className="flex flex-col gap-2 border-b border-neutral-200 pb-4 dark:border-neutral-800 sm:flex-row sm:items-end sm:justify-between sm:pb-5"><div><span className="text-xs text-neutral-500">Olá,</span><h1 className="text-xl font-black sm:text-2xl">{name}</h1><p className="mt-1 text-sm text-neutral-500">Aqui está o panorama completo da sua vida financeira.</p></div><span className="flex items-center gap-2 text-xs capitalize text-neutral-500">{monthLabel}<i className={`h-2 w-2 rounded-full ${isSelectedMonthClosed ? 'bg-emerald-500' : 'bg-amber-500'}`} /></span></header>
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[
-      ['Saldo disponível hoje', availableCash, `${accounts.filter((item) => item.isActive).length} fontes de saldo`, Wallet, 'text-emerald-500 bg-emerald-500/10'],
-      ['Receitas recebidas', income, `Previsto: ${formatBRL(budget.plannedIncome)}`, ArrowDownLeft, 'text-emerald-500 bg-emerald-500/10'],
-      ['Despesas do mês', monthExpenses, `${usage.toFixed(1).replace('.', ',')}% da renda`, ArrowUpRight, 'text-rose-500 bg-rose-500/10'],
-      ['Saldo do mês', balance, income > 0 ? `${(balance / income * 100).toFixed(1).replace('.', ',')}% da renda` : 'Sem renda registrada', TrendingUp, balance >= 0 ? 'text-indigo-500 bg-indigo-500/10' : 'text-rose-500 bg-rose-500/10'],
-    ].map(([label, value, detail, Icon, color]) => { const MetricIcon = Icon as typeof Wallet; return <Card key={String(label)}><div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3"><span className={`rounded-xl p-2.5 sm:p-3 ${color}`}><MetricIcon className="h-4 w-4 sm:h-5 sm:w-5"/></span><div className="min-w-0 w-full"><span className="block truncate text-[11px] text-neutral-500 sm:text-xs">{String(label)}</span><b className={`mt-0.5 block truncate text-lg sm:mt-1 sm:text-xl ${label === 'Saldo do mês' && Number(value) >= 0 ? 'text-emerald-500' : ''}`}>{formatBRL(Number(value))}</b><span className="line-clamp-2 block min-h-7 text-[10px] leading-3.5 text-neutral-500 sm:text-[11px]">{String(detail)}</span></div></div></Card>; })}</div>
-    <Card className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white dark:border-indigo-500/30"><div className="grid gap-4 sm:grid-cols-3"><div><span className="text-xs text-indigo-100">Livre após compromissos</span><b className="mt-1 block text-2xl">{formatBRL(freeAfterCommitments)}</b><small className="text-indigo-100">Saldo mensal menos contas pendentes.</small></div><div><span className="text-xs text-indigo-100">Ainda falta pagar</span><b className="mt-1 block text-2xl">{formatBRL(pendingBillsTotal)}</b><small className="text-indigo-100">{pendingBills.length} {pendingBills.length === 1 ? 'compromisso no período' : 'compromissos no período'}.</small></div><button onClick={() => setSubTab(priority.tab)} className="flex items-start gap-3 rounded-2xl bg-white/10 p-3 text-left hover:bg-white/15"><Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-300"/><span><b className="block text-xs uppercase tracking-wide text-indigo-100">Próxima ação</b><span className="mt-1 block text-sm font-bold">{priority.text}</span></span></button></div></Card>
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(280px,1fr)]">
-      <Card>
-        <div className="flex items-start justify-between gap-2">
-          <div><h3 className="text-sm font-black">Evolução do patrimônio</h3><p className="text-xs text-neutral-500">Patrimônio registrado em cada fechamento.</p></div>
-          <div className="text-right"><span className="block text-[10px] text-neutral-500">Atual</span><b className="text-sm text-indigo-500">{formatBRL(netWorthSummary.netWorth)}</b></div>
-        </div>
-        {history.length > 0 ? <div className="mt-5 flex h-48 items-end gap-2 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800">
-          {history.map((item) => <div key={item.month} className="flex h-full min-w-12 flex-1 flex-col items-center justify-end">
-            <div className={`w-full max-w-12 rounded-t ${item.value < 0 ? 'bg-rose-500' : 'bg-indigo-500'}`}
-              style={{ height: `${Math.max(4, Math.abs(item.value) / historyMax * 90)}%` }} title={formatBRL(item.value)} />
-            <span className="py-2 text-[10px] capitalize text-neutral-500">{new Date(`${item.month}-01T00:00:00Z`).toLocaleDateString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', '')}</span>
-          </div>)}
-        </div> : <div className="mt-4"><Empty text="Sem patrimônio registrado até este mês." /></div>}
-      </Card>
-      <Card><Title action="Ver detalhes" onClick={() => setSubTab('budget')}>Distribuição das despesas</Title>{categories.length ? <div className="flex items-center gap-5"><div className="relative h-36 w-36 shrink-0 rounded-full" style={{ background: donut }}><div className="absolute inset-6 grid place-items-center rounded-full bg-white text-center dark:bg-neutral-900"><span><b className="block text-sm">{formatBRL(monthExpenses)}</b><small className="text-[10px] text-neutral-500">no mês</small></span></div></div><div className="min-w-0 flex-1 space-y-2">{categories.map(([key, value]) => <div key={key} className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[11px]"><span className="h-2 w-2 rounded-full" style={{ background: MASTER_CATEGORY_CONFIG[key as keyof typeof MASTER_CATEGORY_CONFIG]?.color }}/><span className="truncate text-neutral-500">{MASTER_CATEGORY_CONFIG[key as keyof typeof MASTER_CATEGORY_CONFIG]?.name || key}</span><b>{(value / monthExpenses * 100).toFixed(1).replace('.', ',')}%</b></div>)}</div></div> : <Empty text="Nenhuma despesa registrada neste mês."/>}</Card>
-    </div>
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card><Title action="Ver todas" onClick={() => setSubTab('goals')}>Metas e reserva</Title><div className="space-y-4"><Goal title="Reserva de Emergência" current={emergencyFund.currentAmount} target={emergencyFund.targetAmount} icon={<ShieldCheck className="h-4 w-4"/>}/>{goals.filter((item) => item.currentAmount < item.targetAmount).slice(0, 3).map((item) => <Goal key={item.id} title={item.title} current={item.currentAmount} target={item.targetAmount} icon={<Target className="h-4 w-4"/>}/>)}</div></Card>
-      <Card><Title action="Ver todas" onClick={() => setSubTab('debts')}>Dívidas</Title><div className="space-y-2">{activeDebts.slice(0, 4).map((item) => <Row key={item.id} name={item.name || item.creditor} detail={`${item.creditor} · ${item.remainingInstallments} parcelas`} value={item.currentBalance}/>)}{!activeDebts.length && <Empty text="Nenhuma dívida ativa."/>}</div></Card>
-      <Card><Title action="Ver detalhes" onClick={() => setSubTab('budget')}>Orçamento do mês</Title><div className="mt-6 h-3 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800"><div className={`h-full rounded-full ${usage > 100 ? 'bg-rose-500' : usage >= 80 ? 'bg-amber-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min(100, usage)}%` }}/></div><div className="mt-3 flex items-end justify-between"><b>{formatBRL(monthExpenses)} <span className="font-normal text-neutral-500">de {formatBRL(income)}</span></b><b>{usage.toFixed(1).replace('.', ',')}%</b></div><div className={`mt-4 rounded-xl p-3 text-xs font-bold ${balance >= 0 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-500'}`}>{balance >= 0 ? `Você ainda tem ${formatBRL(balance)} disponíveis neste mês.` : `As saídas ultrapassaram a renda em ${formatBRL(Math.abs(balance))}.`}</div></Card>
-      <Card><Title>Ações rápidas</Title><div className="grid grid-cols-2 gap-2"><Action label="Novo lançamento" icon={<Plus className="h-4 w-4"/>} onClick={() => openTransactionModal('expense')}/><Action label="Aportar em meta" icon={<Target className="h-4 w-4"/>} onClick={() => setSubTab('goals')}/><Action label="Ver compromissos" icon={<CalendarClock className="h-4 w-4"/>} onClick={() => setSubTab('bills')}/><Action label="Ajustar orçamento" icon={<Wallet className="h-4 w-4"/>} onClick={() => setSubTab('budget')}/></div><div className="mt-3 flex items-center gap-2 rounded-xl bg-neutral-50 p-3 text-[11px] text-neutral-500 dark:bg-neutral-800/50"><CircleCheck className="h-4 w-4 shrink-0 text-emerald-500"/>Os totais usam apenas dados de {monthLabel}.</div></Card>
-    </div>
-  </div>;
+const percentage = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1, style: 'percent' });
+const monthFormat = new Intl.DateTimeFormat('pt-BR', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+const transactionLabels: Record<TransactionType, string> = {
+  income: 'Receita', expense: 'Despesa', transfer: 'Transferência',
+  investment: 'Investimento', redemption: 'Resgate', debt_payment: 'Pagamento de dívida',
 };
 
-const Goal = ({ title, current, target, icon }: { title: string; current: number; target: number; icon: React.ReactNode; key?: React.Key }) => { const pct = target > 0 ? Math.min(100, current / target * 100) : 0; return <div><div className="flex items-center justify-between gap-3"><span className="flex min-w-0 items-center gap-2 text-indigo-500">{icon}<b className="truncate text-xs text-neutral-800 dark:text-neutral-200">{title}</b></span><b className="text-xs">{pct.toFixed(1).replace('.', ',')}%</b></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${pct}%` }}/></div><span className="mt-1 block text-[10px] text-neutral-500">{formatBRL(current)} / {formatBRL(target)}</span></div>; };
-const Row = ({ name, detail, value, icon }: { name: string; detail?: string; value: number; icon?: React.ReactNode; key?: React.Key }) => <div className="flex items-center justify-between gap-3 rounded-xl bg-neutral-50 p-3 dark:bg-neutral-800/50"><div className="flex min-w-0 items-center gap-2 text-indigo-500">{icon}<span className="min-w-0"><b className="block truncate text-xs text-neutral-800 dark:text-neutral-200">{name}</b>{detail && <small className="block truncate text-[10px] text-neutral-500">{detail}</small>}</span></div><b className="shrink-0 text-xs">{formatBRL(value)}</b></div>;
-const Action = ({ label, icon, onClick }: { label: string; icon: React.ReactNode; onClick: () => void }) => <button onClick={onClick} className="flex items-center gap-2 rounded-xl border border-neutral-200 p-2.5 text-left text-[11px] font-bold hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">{icon}{label}</button>;
-const Empty = ({ text }: { text: string }) => <div className="rounded-xl border border-dashed border-neutral-300 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700">{text}</div>;
+function PanelHeading({ title, action, onClick }: { title: string; action?: string; onClick?: () => void }) {
+  return <div className="fx-panel-heading">
+    <h2>{title}</h2>
+    {action && <button className="fx-text-button" onClick={onClick}>{action}<ChevronRight size={15} aria-hidden="true" /></button>}
+  </div>;
+}
+
+function Empty({ icon, text }: { icon: ReactNode; text: string }) {
+  return <div className="fx-empty">{icon}<p>{text}</p></div>;
+}
+
+function GoalProgress({ title, amount, target, icon }: { title: string; amount: number; target: number; icon: ReactNode }) {
+  const progress = target > 0 ? Math.max(0, Math.min(100, (amount / target) * 100)) : 0;
+  return <div className="fx-goal">
+    <div className="fx-goal-label"><span className="fx-tile-icon" data-tone="violet">{icon}</span><div><strong>{title}</strong>
+      <small>{formatBRL(amount)}{target > 0 && ' de ' + formatBRL(target)}</small></div>
+      {target > 0 && <b>{percentage.format(progress / 100)}</b>}
+    </div>
+    {target > 0 && <progress max={100} value={progress} aria-label={title} />}
+  </div>;
+}
+
+export function FinanceOverviewTab() {
+  const { user } = useAuth();
+  const {
+    accounts, bills, debts, goals, emergencyFund, budget, selectedMonth, selectedMonthTransactions,
+    availableCash, monthIncome, monthExpenses, monthInvestments, monthDebtsPaid,
+    netWorthSummary, monthlyClosingHistory, overdueBills, setSubTab,
+  } = useFinance();
+  const name = String(user?.user_metadata?.full_name || user?.email?.split('@')[0] || '').trim().split(/\s+/)[0];
+  const balance = monthIncome - monthExpenses - monthInvestments - monthDebtsPaid;
+  const pending = bills.filter((bill) => bill.type !== 'income' && bill.status !== 'paid' && bill.dueDate.startsWith(selectedMonth));
+  const pendingTotal = pending.reduce((sum, bill) => sum + bill.amount, 0);
+  const overdue = overdueBills.filter((bill) => bill.type !== 'income').length;
+  const closingHistory = recentClosings(monthlyClosingHistory.filter((entry) => Number.isFinite(entry.netWorth)), selectedMonth, 12);
+  const maxNetWorth = Math.max(1, ...closingHistory.map((entry) => Math.abs(entry.netWorth!)));
+  const activeDebts = debts.filter((item) => item.status !== 'paid' && item.status !== 'cancelled');
+  const recent = [...selectedMonthTransactions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  const totals = new Map<MasterCategory, number>();
+  for (const transaction of selectedMonthTransactions) {
+    if (transaction.type !== 'expense') continue;
+    totals.set(transaction.masterCategory, (totals.get(transaction.masterCategory) ?? 0) + transaction.amount);
+  }
+  const categories = [...totals].filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1]);
+  const activeAccounts = accounts.filter((account) => account.isActive).length;
+  const usage = monthIncome > 0 ? monthExpenses / monthIncome : null;
+  const metrics = [
+    { label: 'Receitas recebidas', amount: monthIncome, detail: 'Previsto: ' + formatBRL(budget.plannedIncome), icon: ArrowDownLeft, tone: 'mint' },
+    { label: 'Despesas do mês', amount: monthExpenses, detail: usage !== null ? percentage.format(usage) + ' da receita' : 'Sem receita registrada', icon: ArrowUpRight, tone: 'coral' },
+    { label: 'Saldo disponível hoje', amount: availableCash, detail: activeAccounts === 1 ? '1 conta ativa' : activeAccounts + ' contas ativas', icon: Wallet, tone: 'violet' },
+  ] as const;
+
+  return <div className="fx-overview">
+    <header className="fx-overview-title">
+      <h1>Visão geral</h1>
+      {name && <p>Olá, {name}.</p>}
+    </header>
+
+    <div className="fx-summary-grid">
+      <section className="fx-balance" aria-labelledby="balance-title">
+        <div className="fx-balance-content">
+          <h2 id="balance-title"><Wallet size={17} aria-hidden="true" /> Saldo do mês</h2>
+          <strong className="fx-balance-number">{formatBRL(balance)}</strong>
+          <p>Receitas menos despesas, aportes e dívidas pagas.</p>
+          <div className="fx-balance-footer">
+            <span>Livre após compromissos</span>
+            <b>{formatBRL(balance - pendingTotal)}</b>
+          </div>
+        </div>
+      </section>
+      <section className="fx-panel fx-commitments">
+        <span className="fx-tile-icon" data-tone={overdue ? 'coral' : 'violet'}><CalendarClock size={19} aria-hidden="true" /></span>
+        <div>
+          <h2>Compromissos pendentes</h2>
+          <strong className="fx-commitments-value">{formatBRL(pendingTotal)}</strong>
+          <p>{!pending.length ? 'Nenhuma conta pendente neste mês.' : pending.length === 1 ? '1 conta a pagar neste mês.' : pending.length + ' contas a pagar neste mês.'}</p>
+          {overdue > 0 && <p className="fx-overdue">{overdue === 1 ? '1 conta em atraso' : overdue + ' contas em atraso'}</p>}
+        </div>
+        <button className="fx-text-button" onClick={() => setSubTab('bills')}>Abrir agenda <ArrowRight size={16} aria-hidden="true" /></button>
+      </section>
+    </div>
+
+    <div className="fx-metrics">
+      {metrics.map(({ label, amount, detail, icon: Icon, tone }) => <section className="fx-panel fx-metric" key={label}>
+        <span className="fx-tile-icon" data-tone={tone}><Icon size={19} aria-hidden="true" /></span>
+        <div><h2>{label}</h2><strong>{formatBRL(amount)}</strong><small>{detail}</small></div>
+      </section>)}
+    </div>
+
+    <div className="fx-detail-grid">
+      <section className="fx-panel">
+        <PanelHeading title="Despesas por categoria" action="Orçamento" onClick={() => setSubTab('budget')} />
+        {categories.length > 0 ? <ul className="fx-categories">
+          {categories.map(([key, amount]) => {
+            const category = MASTER_CATEGORY_CONFIG[key];
+            const share = monthExpenses > 0 ? Math.min(1, amount / monthExpenses) : 0;
+            return <li key={key}>
+              <div><span>{category?.name ?? key}</span><b>{formatBRL(amount)}</b></div>
+              <div className="fx-ratio-track" title={percentage.format(share)}>
+                <span style={{ width: `${share * 100}%`, background: category?.color ?? '#a99bff' }} />
+              </div>
+            </li>;
+          })}
+        </ul> : <Empty icon={<ChartNoAxesCombined size={22} aria-hidden="true" />} text="Nenhuma despesa registrada neste mês." />}
+      </section>
+
+      <section className="fx-panel">
+        <PanelHeading title="Últimos lançamentos" />
+        {recent.length > 0 ? <ul className="fx-ledger">
+          {recent.map((entry) => {
+            const income = entry.type === 'income' || entry.type === 'redemption';
+            const transfer = entry.type === 'transfer';
+            const Icon = transfer ? ArrowRight : income ? ArrowDownLeft : ArrowUpRight;
+            return <li key={entry.id}>
+              <span className="fx-tile-icon" data-tone={transfer ? 'violet' : income ? 'mint' : 'coral'}><Icon size={16} aria-hidden="true" /></span>
+              <div><strong>{entry.description}</strong><small>{transactionLabels[entry.type]} · {formatDatePT(entry.date)}</small></div>
+              <b>{transfer ? '' : income ? '+' : '−'}{formatBRL(entry.amount)}</b>
+            </li>;
+          })}
+        </ul> : <Empty icon={<ReceiptText size={22} aria-hidden="true" />} text="Nenhum lançamento neste mês." />}
+      </section>
+
+      <section className="fx-panel">
+        <PanelHeading title="Evolução do patrimônio" />
+        <p className="fx-current-worth">Patrimônio atual <b>{formatBRL(netWorthSummary.netWorth)}</b></p>
+        {closingHistory.length ? <div className="fx-history" aria-label="Patrimônio nos fechamentos mensais">
+          {closingHistory.map(({ month, netWorth }) => {
+            const label = monthFormat.format(new Date(`${month}-01T00:00:00Z`)).replace(' de ', '/');
+            const value = netWorth!;
+            return <div key={month} className="fx-history-slot">
+              <div className="fx-history-track"><span role="img" aria-label={label + ': ' + formatBRL(value)} title={formatBRL(value)}
+                className={value < 0 ? 'fx-history-negative' : ''} style={{ height: `${Math.max(3, Math.abs(value) / maxNetWorth * 100)}%` }} /></div>
+              <small>{label}</small>
+            </div>;
+          })}
+        </div> : <Empty icon={<ChartNoAxesCombined size={22} aria-hidden="true" />} text="Feche um mês para começar a acompanhar o histórico." />}
+      </section>
+
+      <section className="fx-panel">
+        <PanelHeading title="Metas e reserva" action="Ver metas" onClick={() => setSubTab('goals')} />
+        <div className="fx-goals">
+          <GoalProgress title="Reserva de emergência" amount={emergencyFund.currentAmount} target={emergencyFund.targetAmount} icon={<ShieldCheck size={16} aria-hidden="true" />} />
+          {goals.filter((goal) => goal.currentAmount < goal.targetAmount).slice(0, 3).map((goal) =>
+            <div key={goal.id}><GoalProgress title={goal.title} amount={goal.currentAmount} target={goal.targetAmount} icon={<Target size={16} aria-hidden="true" />} /></div>)}
+        </div>
+      </section>
+
+      <section className="fx-panel">
+        <PanelHeading title="Dívidas ativas" action="Ver dívidas" onClick={() => setSubTab('debts')} />
+        {activeDebts.length ? <ul className="fx-ledger">
+          {activeDebts.slice(0, 4).map((debt) => <li key={debt.id}>
+            <span className="fx-tile-icon" data-tone="coral"><Flag size={16} aria-hidden="true" /></span>
+            <div><strong>{debt.name || debt.creditor}</strong><small>{debt.remainingInstallments} {debt.remainingInstallments === 1 ? 'parcela' : 'parcelas'}</small></div>
+            <b>{formatBRL(debt.currentBalance)}</b>
+          </li>)}
+        </ul> : <Empty icon={<CircleCheck size={22} aria-hidden="true" />} text="Nenhuma dívida ativa." />}
+      </section>
+    </div>
+  </div>;
+}

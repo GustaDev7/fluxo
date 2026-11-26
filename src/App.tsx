@@ -6,6 +6,7 @@ import { FluxoLogo } from './components/FluxoLogo';
 import { FinanceView } from './components/views/FinanceView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { FinanceProvider, useFinance } from './context/FinanceContext';
+import './financeLayout.css';
 
 const FinanceAssistant = lazy(() => import('./components/FinanceAssistant').then((module) => ({ default: module.FinanceAssistant })));
 
@@ -31,27 +32,23 @@ const FinanceApp: React.FC = () => {
   }
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-[#080610] text-neutral-100">
-      <header className="z-30 flex h-14 shrink-0 items-center justify-between border-b border-violet-950/80 bg-[#100b1a]/95 px-2.5 backdrop-blur sm:h-16 sm:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <FluxoLogo size="sm" showSubtitle={false} className="sm:hidden" />
-          <FluxoLogo className="hidden sm:flex" />
-          <span className="hidden h-6 w-px bg-violet-900/60 sm:block" />
-          <span className="hidden text-sm font-bold text-neutral-500 sm:block">Finanças pessoais</span>
-        </div>
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          <button onClick={() => setIsAssistantOpen(true)} disabled={!isFinanceHydrated || isSigningOut} className="group flex h-10 w-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-xs font-black text-white shadow-sm hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 sm:w-auto sm:px-4" aria-label="Abrir Fluxo IA">
-            <Sparkles className="h-4 w-4 transition-transform group-hover:rotate-12" />
-            <span className="hidden sm:inline">Fluxo IA</span>
+    <div className="fx-shell">
+      <header className="fx-topbar">
+        <div className="fx-brand"><FluxoLogo showSubtitle={false} /><span>Finanças pessoais</span></div>
+        <div className="fx-topbar-actions">
+          <button onClick={() => void forceFinanceDbSync()} disabled={isFinanceDbSaving || !isFinanceHydrated} data-connected={isFinanceDbConnected && !isFinanceOffline}
+            title={isFinanceDbConnected ? `Sincronizado${lastFinanceDbSyncedAt ? ` às ${lastFinanceDbSyncedAt}` : ''}` : 'Dados não sincronizados'}
+            className="fx-top-button fx-sync" aria-label="Sincronizar dados financeiros">
+            {isFinanceDbSaving ? <RefreshCw size={17} className="animate-spin" /> : <Database size={17} />}
           </button>
-          <button onClick={() => openTransactionModal('expense')} disabled={!isFinanceHydrated || isSigningOut} className="flex h-10 w-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:px-4" aria-label="Novo lançamento">
-            <Plus className="h-4 w-4" /><span className="hidden sm:inline">Novo lançamento</span>
+          <button onClick={() => setIsAssistantOpen(true)} disabled={!isFinanceHydrated || isSigningOut} className="fx-top-button fx-ai" aria-label="Abrir Fluxo IA">
+            <Sparkles size={17} /><span>Fluxo IA</span>
           </button>
-          <button onClick={() => forceFinanceDbSync()} disabled={isFinanceDbSaving || !isFinanceHydrated} title={isFinanceDbConnected ? `Sincronizado${lastFinanceDbSyncedAt ? ` às ${lastFinanceDbSyncedAt}` : ''}` : 'Dados não sincronizados'} className={`rounded-xl p-2 disabled:opacity-50 ${isFinanceDbConnected ? 'text-emerald-600' : 'text-amber-600'}`} aria-label="Sincronizar dados financeiros">
-            {isFinanceDbSaving ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Database className="h-5 w-5" />}
+          <button onClick={() => openTransactionModal('expense')} disabled={!isFinanceHydrated || isSigningOut} className="fx-top-button fx-new" aria-label="Novo lançamento">
+            <Plus size={19} /><span>Novo lançamento</span>
           </button>
-          <button onClick={() => void leave()} disabled={isSigningOut} className="rounded-xl p-2 text-neutral-500 hover:bg-neutral-100 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-neutral-800" aria-label={`Sair da conta ${user?.email || ''}`}>
-            <LogOut className="h-5 w-5" />
+          <button onClick={() => void leave()} disabled={isSigningOut} className="fx-top-button fx-signout" aria-label={`Sair da conta ${user?.email || ''}`}>
+            <LogOut size={17} />
           </button>
         </div>
       </header>

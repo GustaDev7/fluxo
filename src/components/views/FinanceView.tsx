@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useFinance } from '../../context/FinanceContext';
 import { FinanceOverviewTab } from './finance/FinanceOverviewTab';
 import { FinanceTransactionModal } from './finance/FinanceTransactionModal';
@@ -6,15 +6,13 @@ import { FinanceDiagnosisModal } from './finance/FinanceDiagnosisModal';
 import { EmergencyConfigModal } from './finance/EmergencyConfigModal';
 import { EmergencyDepositModal } from './finance/EmergencyDepositModal';
 import {
-  PieChart,
-  DollarSign,
+  LayoutDashboard,
+  Wallet,
   CalendarClock,
   ShieldAlert,
   Target,
   TrendingUp,
-  Plus,
   Sparkles,
-  ChevronDown,
   CalendarDays,
   Download,
   LockKeyhole,
@@ -34,7 +32,6 @@ export const FinanceView: React.FC = () => {
   const {
     subTab: activeSubTab,
     setSubTab: setActiveSubTab,
-    openTransactionModal,
     openDiagnosisModal,
     overdueBills,
     selectedMonth,
@@ -44,7 +41,7 @@ export const FinanceView: React.FC = () => {
     saveMonthlyClosing,
     exportFinanceBackup,
   } = useFinance();
-  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isClosingOpen, setIsClosingOpen] = useState(false);
   const [closingRating, setClosingRating] = useState<MonthlyClosing['rating']>('good');
@@ -58,122 +55,64 @@ export const FinanceView: React.FC = () => {
 
   useEffect(() => {
     if (activeSubTab === 'transactions' || activeSubTab === 'accounts') setActiveSubTab('overview');
+    contentRef.current?.scrollTo(0, 0);
   }, [activeSubTab, setActiveSubTab]);
 
   const navItems: { id: FinanceSubTab; label: string; mobileLabel: string; icon: React.ReactNode; badge?: number }[] = [
-    { id: 'overview', label: 'Visão Geral', mobileLabel: 'Início', icon: <PieChart className="h-4 w-4" /> },
-    { id: 'budget', label: 'Orçamento', mobileLabel: 'Orçamento', icon: <DollarSign className="h-4 w-4" /> },
-    { id: 'bills', label: 'Compromissos', mobileLabel: 'Agenda', icon: <CalendarClock className="h-4 w-4" />, badge: overdueBills.length || undefined },
-    { id: 'goals', label: 'Metas', mobileLabel: 'Metas', icon: <Target className="h-4 w-4" /> },
-    { id: 'debts', label: 'Dívidas', mobileLabel: 'Dívidas', icon: <ShieldAlert className="h-4 w-4" /> },
-    { id: 'investments', label: 'Investimentos', mobileLabel: 'Investir', icon: <TrendingUp className="h-4 w-4" /> },
+    { id: 'overview', label: 'Visão geral', mobileLabel: 'Início', icon: <LayoutDashboard size={19} aria-hidden="true" /> },
+    { id: 'budget', label: 'Orçamento', mobileLabel: 'Orçamento', icon: <Wallet size={19} aria-hidden="true" /> },
+    { id: 'bills', label: 'Compromissos', mobileLabel: 'Agenda', icon: <CalendarClock size={19} aria-hidden="true" />, badge: overdueBills.length || undefined },
+    { id: 'goals', label: 'Metas', mobileLabel: 'Metas', icon: <Target size={19} aria-hidden="true" /> },
+    { id: 'debts', label: 'Dívidas', mobileLabel: 'Dívidas', icon: <ShieldAlert size={19} aria-hidden="true" /> },
+    { id: 'investments', label: 'Investimentos', mobileLabel: 'Investir', icon: <TrendingUp size={19} aria-hidden="true" /> },
   ];
   const mobilePrimaryItems = navItems.filter((item) => ['overview', 'budget', 'bills', 'goals'].includes(item.id));
   const mobileMoreItems = navItems.filter((item) => ['debts', 'investments'].includes(item.id));
   const isMobileMoreActive = mobileMoreItems.some((item) => item.id === activeSubTab);
 
-  const pageMeta: Partial<Record<FinanceSubTab, { title: string; description: string }>> = {
-    overview: { title: 'Visão Geral', description: 'Seu panorama financeiro consolidado, com dados de todas as áreas.' },
-    budget: { title: 'Orçamento', description: 'Planeje, registre e acompanhe para onde seu dinheiro está indo.' },
-    goals: { title: 'Metas', description: 'Direcione recursos para sua reserva e seus objetivos financeiros.' },
-    debts: { title: 'Dívidas', description: 'Acompanhe obrigações e planeje a melhor estratégia de quitação.' },
-    investments: { title: 'Investimentos', description: 'Acompanhe aportes, rendimentos e construção patrimonial.' },
-    bills: { title: 'Compromissos', description: 'Vencimentos e obrigações financeiras do período.' },
-    emergency: { title: 'Reserva de Emergência', description: 'Configuração detalhada da sua meta de segurança.' },
-  };
-  const currentMeta = pageMeta[activeSubTab] || pageMeta.overview!;
-
   return (
-    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-[#080610] p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:p-4 md:p-6 md:pb-6">
-      <div className="mx-auto max-w-[1540px] space-y-5">
-        {/* Top Header */}
-        {!['overview', 'goals', 'debts', 'budget', 'investments'].includes(activeSubTab) && (
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-neutral-400"><span>Finanças</span><span>›</span><span className="text-neutral-600 dark:text-neutral-300">{currentMeta.title}</span></div>
-            <h1 className="text-2xl font-black tracking-tight text-neutral-900 dark:text-neutral-100">{currentMeta.title}</h1>
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{currentMeta.description}</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-            <button
-              onClick={openDiagnosisModal}
-              className="flex items-center justify-center gap-1.5 rounded-2xl border border-indigo-200 bg-indigo-50/80 px-3.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300 transition-colors"
-            >
-              <Sparkles className="h-4 w-4 text-indigo-500" />
-              <span>Diagnóstico</span>
-            </button>
-
-            <button
-              onClick={() => openTransactionModal('expense')}
-              className="flex items-center justify-center gap-1.5 rounded-2xl bg-neutral-900 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white transition-all"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Novo Lançamento</span>
-            </button>
-            <div className="relative col-span-2 sm:col-span-1">
-              <button onClick={() => setIsMoreOpen((value) => !value)} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-xs font-bold text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300"><span>Mais</span><ChevronDown className="h-3.5 w-3.5"/></button>
-              {isMoreOpen && <div className="absolute right-0 top-11 z-30 w-52 rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
-                <button onClick={() => { setActiveSubTab('bills'); setIsMoreOpen(false); }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"><span className="flex items-center gap-2"><CalendarClock className="h-4 w-4"/>Compromissos</span>{overdueBills.length > 0 && <b className="rounded-full bg-rose-600 px-1.5 text-[10px] text-white">{overdueBills.length}</b>}</button>
-              </div>}
-            </div>
-          </div>
-        </div>
-        )}
-
-        <section className="flex flex-col gap-2.5 rounded-2xl border border-neutral-200 bg-white p-2.5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-3 dark:border-neutral-800 dark:bg-neutral-900">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-500/10 text-indigo-500"><CalendarDays className="h-5 w-5" /></span>
-            <div className="min-w-0">
-              <span className="block text-[10px] font-black uppercase tracking-wider text-neutral-400">Competência financeira</span>
-              <input aria-label="Competência financeira" type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} className="max-w-full bg-transparent text-sm font-black capitalize outline-none" />
-            </div>
-            <span className={`hidden rounded-full px-2.5 py-1 text-[10px] font-bold sm:inline-flex ${isSelectedMonthClosed ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'}`}>{isSelectedMonthClosed ? 'Mês fechado' : 'Em acompanhamento'}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex">
-            <button onClick={exportFinanceBackup} className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 px-2.5 text-[11px] font-bold hover:bg-neutral-50 sm:min-h-10 sm:gap-2 sm:px-3 sm:text-xs dark:border-neutral-700 dark:hover:bg-neutral-800"><Download className="h-4 w-4" />Backup</button>
-            <button onClick={openClosing} className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl bg-neutral-900 px-2.5 text-[11px] font-bold text-white hover:bg-neutral-800 sm:min-h-10 sm:gap-2 sm:px-3 sm:text-xs dark:bg-neutral-100 dark:text-neutral-900"><LockKeyhole className="h-4 w-4" /><span className="truncate">{isSelectedMonthClosed ? 'Atualizar mês' : 'Fechar mês'}</span></button>
-          </div>
-        </section>
-
-        {/* Sub Navigation Tabs */}
-        <div className="hidden items-center gap-2 overflow-x-auto border-b border-neutral-200/80 md:flex dark:border-neutral-800">
+    <div className="fx-workspace">
+      <aside className="fx-rail">
+        <nav aria-label="Navegação financeira" className="fx-desktop-nav">
           {navItems.map((item) => {
-            const isActive = activeSubTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveSubTab(item.id)}
-                className={`flex items-center gap-2 whitespace-nowrap px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-[1px] ${
-                  isActive
-                    ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200'
-                }`}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-                {item.badge !== undefined && (
-                  <span className="rounded-full bg-rose-600 px-1.5 py-0.2 text-[10px] font-bold text-white">
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            );
+            const isActive = activeSubTab === item.id || (item.id === 'goals' && activeSubTab === 'emergency');
+            return <button key={item.id} onClick={() => setActiveSubTab(item.id)} aria-current={isActive ? 'page' : undefined}>
+              {item.icon}<span>{item.label}</span>
+              {!!item.badge && <b className="fx-nav-badge" aria-label={item.badge + ' em atraso'}>{item.badge}</b>}
+            </button>;
           })}
+        </nav>
+        <button className="fx-rail-tool" onClick={openDiagnosisModal}><Sparkles size={18} aria-hidden="true" />Diagnóstico</button>
+      </aside>
+      <div className="fx-content-scroll" ref={contentRef}>
+        <div className="fx-content">
+          <section className="fx-period" aria-label="Período financeiro">
+            <label className="fx-period-picker">
+              <span className="fx-period-icon"><CalendarDays size={19} aria-hidden="true" /></span>
+              <span><span className="fx-period-label">Competência financeira</span>
+                <input aria-label="Competência financeira" type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} />
+              </span>
+            </label>
+            <span className="fx-period-status" data-closed={isSelectedMonthClosed}><i aria-hidden="true" />{isSelectedMonthClosed ? 'Mês fechado' : 'Em acompanhamento'}</span>
+            <div className="fx-period-actions">
+              <button onClick={exportFinanceBackup} aria-label="Backup" title="Baixar backup"><Download size={17} aria-hidden="true" /><span>Backup</span></button>
+              <button onClick={openClosing}><LockKeyhole size={17} aria-hidden="true" />{isSelectedMonthClosed ? 'Atualizar mês' : 'Fechar mês'}</button>
+            </div>
+          </section>
+          {activeSubTab === 'bills' && <h1 className="fx-page-title">Compromissos</h1>}
+          {activeSubTab === 'emergency' && <h1 className="fx-page-title">Reserva de emergência</h1>}
+          <Suspense fallback={<div role="status" className="grid min-h-72 place-items-center text-sm font-semibold text-neutral-500">Carregando área financeira...</div>}>
+            <div className="fx-section-content">
+              {activeSubTab === 'overview' && <FinanceOverviewTab />}
+              {activeSubTab === 'emergency' && <FinanceEmergencyTab />}
+              {activeSubTab === 'budget' && <FinanceBudgetTab />}
+              {activeSubTab === 'bills' && <FinanceBillsTab />}
+              {activeSubTab === 'debts' && <FinanceDebtsTab />}
+              {activeSubTab === 'goals' && <FinanceGoalsTab />}
+              {activeSubTab === 'investments' && <FinanceInvestmentsTab />}
+            </div>
+          </Suspense>
         </div>
-
-        {/* Sub Tab Views */}
-        <Suspense fallback={<div role="status" className="grid min-h-72 place-items-center text-sm font-semibold text-neutral-500">Carregando área financeira...</div>}>
-        <div className="pt-2">
-          {activeSubTab === 'overview' && <FinanceOverviewTab />}
-          {activeSubTab === 'emergency' && <FinanceEmergencyTab />}
-          {activeSubTab === 'budget' && <FinanceBudgetTab />}
-          {activeSubTab === 'bills' && <FinanceBillsTab />}
-          {activeSubTab === 'debts' && <FinanceDebtsTab />}
-          {activeSubTab === 'goals' && <FinanceGoalsTab />}
-          {activeSubTab === 'investments' && <FinanceInvestmentsTab />}
-        </div>
-        </Suspense>
       </div>
 
       {/* Global Modals */}
@@ -182,23 +121,28 @@ export const FinanceView: React.FC = () => {
       <EmergencyConfigModal />
       <EmergencyDepositModal />
 
-      <nav aria-label="Navegação financeira móvel" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-neutral-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden dark:border-neutral-800 dark:bg-neutral-900/95">
+      <nav aria-label="Navegação financeira móvel" className="fx-mobile-nav">
         {mobilePrimaryItems.map((item) => {
-          const active = activeSubTab === item.id;
-          return <button key={item.id} onClick={() => setActiveSubTab(item.id)} className={`relative flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[10px] font-bold ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-500'}`}>
-            {item.icon}<span className="max-w-full truncate">{item.mobileLabel}</span>
-            {item.badge ? <span className="absolute right-3 top-2 rounded-full bg-rose-600 px-1.5 text-[9px] text-white">{item.badge}</span> : null}
+          const active = activeSubTab === item.id || (item.id === 'goals' && activeSubTab === 'emergency');
+          return <button key={item.id} onClick={() => setActiveSubTab(item.id)} aria-current={active ? 'page' : undefined}>
+            <span>{item.icon}{!!item.badge && <b className="fx-nav-badge" aria-label={item.badge + ' em atraso'}>{item.badge}</b>}</span>
+            {item.mobileLabel}
           </button>;
         })}
-        <button onClick={() => setIsMobileMoreOpen(true)} aria-expanded={isMobileMoreOpen} className={`relative flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-[10px] font-bold ${isMobileMoreActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-500'}`}>
-          <MoreHorizontal className="h-4 w-4" /><span>Mais</span>
+        <button onClick={() => setIsMobileMoreOpen(true)} aria-expanded={isMobileMoreOpen} aria-current={isMobileMoreActive ? 'page' : undefined}>
+          <span><MoreHorizontal size={21} aria-hidden="true" /></span>Mais
         </button>
       </nav>
 
-      {isMobileMoreOpen && <div className="fixed inset-0 z-[70] flex items-end bg-black/70 md:hidden" role="presentation" onClick={() => setIsMobileMoreOpen(false)}>
-        <section role="dialog" aria-modal="true" aria-labelledby="mobile-more-title" onClick={(event) => event.stopPropagation()} className="w-full rounded-t-3xl border-t border-neutral-800 bg-[#100b1a] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl">
-          <div className="flex items-center justify-between"><div><h2 id="mobile-more-title" className="text-base font-black">Mais áreas</h2><p className="text-xs text-neutral-500">Acesse outras partes das suas finanças.</p></div><button type="button" aria-label="Fechar menu" onClick={() => setIsMobileMoreOpen(false)} className="rounded-xl p-2 text-neutral-400 hover:bg-neutral-800"><X className="h-5 w-5" /></button></div>
-          <div className="mt-4 grid grid-cols-2 gap-3">{mobileMoreItems.map((item) => <button key={item.id} onClick={() => { setActiveSubTab(item.id); setIsMobileMoreOpen(false); }} className={`flex min-h-20 flex-col items-start justify-center gap-2 rounded-2xl border p-4 text-left text-sm font-bold ${activeSubTab === item.id ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300' : 'border-neutral-800 bg-neutral-900 text-neutral-200'}`}>{item.icon}<span>{item.label}</span></button>)}</div>
+      {isMobileMoreOpen && <div className="fx-mobile-overlay" role="presentation" onClick={() => setIsMobileMoreOpen(false)}>
+        <section role="dialog" aria-modal="true" aria-labelledby="mobile-more-title" onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => { if (event.key === 'Escape') setIsMobileMoreOpen(false); }} className="fx-mobile-sheet">
+          <div className="fx-panel-heading"><h2 id="mobile-more-title">Mais áreas</h2><button autoFocus aria-label="Fechar menu" onClick={() => setIsMobileMoreOpen(false)}><X size={21} /></button></div>
+          <div className="fx-mobile-sheet-links">
+            {mobileMoreItems.map((item) => <button key={item.id} aria-current={activeSubTab === item.id ? 'page' : undefined}
+              onClick={() => { setActiveSubTab(item.id); setIsMobileMoreOpen(false); }}>{item.icon}{item.label}</button>)}
+            <button onClick={() => { setIsMobileMoreOpen(false); openDiagnosisModal(); }}><Sparkles size={19} />Diagnóstico</button>
+          </div>
         </section>
       </div>}
 

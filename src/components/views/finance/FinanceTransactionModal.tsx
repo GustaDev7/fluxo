@@ -133,21 +133,21 @@ export const FinanceTransactionModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative flex max-h-[92vh] w-full max-w-xl flex-col rounded-3xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-labelledby="transaction-title"
+        onKeyDown={(event) => { if (event.key === 'Escape') closeTransactionModal(); }}
+        className="relative flex max-h-[92dvh] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-neutral-100 px-6 py-4 dark:border-neutral-800">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600/10 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400">
               <Plus className="h-5 w-5" />
             </div>
-            <div>
-              <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100">Novo Lançamento</h2>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                Sistema financeiro conectado ao Fluxo
-              </p>
-            </div>
+            <h2 id="transaction-title" className="text-base font-bold text-neutral-900 dark:text-neutral-100">Novo lançamento</h2>
           </div>
           <button
+            type="button"
+            aria-label="Fechar"
+            autoFocus
             onClick={closeTransactionModal}
             className="rounded-xl p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
           >
