@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getTodayDateString } from '../utils/date';
 
 type Row = Record<string, any>;
 export class FinanceConflictError extends Error {
@@ -7,9 +8,43 @@ export class FinanceConflictError extends Error {
     this.name = 'FinanceConflictError';
   }
 }
+
+const pageSize = 500;
+
+async function readOwnedRows(table: string, userId: string, columns: '*' | 'id' = '*', budgetId?: string): Promise<Row[]> {
+  const rows: Row[] = [];
+  let after: string | undefined;
+  while (true) {
+    let query = supabase.from(table).select(columns).eq('user_id', userId);
+    if (budgetId) query = query.eq('budget_id', budgetId);
+    if (table === 'finance_preferences' || table === 'emergency_funds') {
+      const { data, error } = await query.limit(1);
+      if (error) throw error;
+      return (data ?? []) as Row[];
+    }
+    if (after) query = query.gt('id', after);
+    const { data, error } = await query.order('id').limit(pageSize);
+    if (error) throw error;
+    const page = (data ?? []) as Row[];
+    if (!page.length) return rows;
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+    after = page[page.length - 1].id;
+  }
+}
+
+async function deleteOwnedRows(table: string, userId: string, ids: string[], budgetId?: string) {
+  // Keep the URL short even when deleting large histories of UUIDs.
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    let query = supabase.from(table).delete().eq('user_id', userId);
+    if (budgetId) query = query.eq('budget_id', budgetId);
+    const { error } = await query.in('id', ids.slice(offset, offset + 100));
+    if (error) throw error;
+  }
+}
+
 async function replaceRows(table: string, userId: string, nextRows: Row[]) {
-  const { data: current, error: readError } = await supabase.from(table).select('id').eq('user_id', userId);
-  if (readError) throw readError;
+  const current = await readOwnedRows(table, userId, 'id');
 
   if (nextRows.length) {
     const { error } = await supabase.from(table).upsert(nextRows);
@@ -17,22 +52,15 @@ async function replaceRows(table: string, userId: string, nextRows: Row[]) {
   }
 
   const nextIds = new Set(nextRows.map((row) => row.id));
-  const removedIds = (current ?? []).map((row: any) => row.id).filter((id: string) => !nextIds.has(id));
-  if (removedIds.length) {
-    const { error } = await supabase.from(table).delete().eq('user_id', userId).in('id', removedIds);
-    if (error) throw error;
-  }
+  const removedIds = current.map((row) => row.id).filter((id: string) => !nextIds.has(id));
+  await deleteOwnedRows(table, userId, removedIds);
 }
 export async function loadFinanceData(userId: string) {
-  const ownedRows = async (table: string) => {
-    const { data, error } = await supabase.from(table).select('*').eq('user_id', userId);
-    if (error) throw error;
-    return (data ?? []) as Row[];
-  };
+  const ownedRows = (table: string) => readOwnedRows(table, userId);
   const [accountRows, cardRows, transactionRows, billRows, debtRows, investmentRows, goalRows, emergencyRows, preferenceRows, termRows, installmentRows, paymentRows, budgetRows, incomeSourceRows, budgetCategoryRows] =
     await Promise.all([ownedRows('finance_accounts'), ownedRows('finance_cards'), ownedRows('finance_transactions'), ownedRows('finance_bills'), ownedRows('finance_debts'), ownedRows('finance_investments'), ownedRows('financial_goals'), ownedRows('emergency_funds'), ownedRows('finance_preferences'), ownedRows('debt_terms'), ownedRows('debt_installments'), ownedRows('debt_payments'), ownedRows('monthly_budgets'), ownedRows('budget_income_sources'), ownedRows('budget_categories')]);
   const preferences = preferenceRows[0] || {};
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = getTodayDateString().slice(0, 7);
   const legacyBudget = preferences.budget;
   const loadedBudgets = [...budgetRows]
     .sort((a, b) => String(b.month).localeCompare(String(a.month)))
@@ -78,7 +106,7 @@ export async function saveFinanceData(userId: string, data: any, expectedRevisio
     .eq('user_id', userId)
     .maybeSingle();
   if (revisionError) throw revisionError;
-  if (expectedRevision && serverPreference?.updated_at && serverPreference.updated_at !== expectedRevision) {
+  if ((serverPreference?.updated_at ?? null) !== expectedRevision) {
     throw new FinanceConflictError();
   }
   const nextRevision = new Date().toISOString();
@@ -108,32 +136,24 @@ export async function saveFinanceData(userId: string, data: any, expectedRevisio
     if (budgetError) throw budgetError;
     const persistedBudgetId = budgetRow.id;
     const incomeRows = (monthlyBudget.incomeSources || []).map((item: any, index: number) => ({ id:item.id,user_id:userId,budget_id:persistedBudgetId,name:item.name,source_type:item.type,planned_amount:item.plannedAmount,received_amount:item.receivedAmount,recurring:item.recurring,sort_order:index }));
-    const { data: currentIncome, error: currentIncomeError } = await supabase.from('budget_income_sources').select('id').eq('user_id', userId).eq('budget_id', persistedBudgetId);
-    if (currentIncomeError) throw currentIncomeError;
+    const currentIncome = await readOwnedRows('budget_income_sources', userId, 'id', persistedBudgetId);
     if (incomeRows.length) {
       const { error } = await supabase.from('budget_income_sources').upsert(incomeRows);
       if (error) throw error;
     }
     const incomeIds = new Set(incomeRows.map((item: Row) => item.id));
-    const removedIncomeIds = (currentIncome || []).map((item: Row) => item.id).filter((id: string) => !incomeIds.has(id));
-    if (removedIncomeIds.length) {
-      const { error } = await supabase.from('budget_income_sources').delete().eq('user_id', userId).eq('budget_id', persistedBudgetId).in('id', removedIncomeIds);
-      if (error) throw error;
-    }
+    const removedIncomeIds = currentIncome.map((item) => item.id).filter((id: string) => !incomeIds.has(id));
+    await deleteOwnedRows('budget_income_sources', userId, removedIncomeIds, persistedBudgetId);
 
     const categoryRows = (monthlyBudget.categories || []).map((item: any) => ({ id:item.id,user_id:userId,budget_id:persistedBudgetId,parent_id:item.parentId||null,master_category:item.masterCategory||null,name:item.name,description:item.description||null,color:item.color,icon:item.icon||null,allocation_mode:item.allocationMode,percentage:item.percentage,fixed_amount:item.fixedAmount,planned_amount:item.plannedAmount,spending_limit:item.spendingLimit??null,priority:item.priority,archived:item.archived }));
-    const { data: currentCategories, error: currentCategoriesError } = await supabase.from('budget_categories').select('id').eq('user_id', userId).eq('budget_id', persistedBudgetId);
-    if (currentCategoriesError) throw currentCategoriesError;
+    const currentCategories = await readOwnedRows('budget_categories', userId, 'id', persistedBudgetId);
     if (categoryRows.length) {
       const { error } = await supabase.from('budget_categories').upsert(categoryRows);
       if (error) throw error;
     }
     const categoryIds = new Set(categoryRows.map((item: Row) => item.id));
-    const removedCategoryIds = (currentCategories || []).map((item: Row) => item.id).filter((id: string) => !categoryIds.has(id));
-    if (removedCategoryIds.length) {
-      const { error } = await supabase.from('budget_categories').delete().eq('user_id', userId).eq('budget_id', persistedBudgetId).in('id', removedCategoryIds);
-      if (error) throw error;
-    }
+    const removedCategoryIds = currentCategories.map((item) => item.id).filter((id: string) => !categoryIds.has(id));
+    await deleteOwnedRows('budget_categories', userId, removedCategoryIds, persistedBudgetId);
   }
 
   // The preference row acts as the synchronization revision and is updated last.

@@ -77,7 +77,7 @@ export const FinanceView: React.FC = () => {
   const currentMeta = pageMeta[activeSubTab] || pageMeta.overview!;
 
   return (
-    <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto bg-[#080610] p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:p-4 md:p-6 md:pb-6">
+    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-[#080610] p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:p-4 md:p-6 md:pb-6">
       <div className="mx-auto max-w-[1540px] space-y-5">
         {/* Top Header */}
         {!['overview', 'goals', 'debts', 'budget', 'investments'].includes(activeSubTab) && (

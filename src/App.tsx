@@ -13,6 +13,22 @@ const FinanceApp: React.FC = () => {
   const { user, signOut } = useAuth();
   const { isFinanceDbConnected, isFinanceDbSaving, isFinanceHydrated, isFinanceOffline, lastFinanceDbError, lastFinanceDbSyncedAt, forceFinanceDbSync, openTransactionModal } = useFinance();
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState('');
+
+  async function leave() {
+    setIsSigningOut(true);
+    setSignOutError('');
+    try {
+      if (isFinanceHydrated && !(await forceFinanceDbSync()) &&
+        !window.confirm('Há alterações que ainda não foram salvas. Quer sair mesmo assim?')) return;
+      await signOut();
+    } catch {
+      setSignOutError('Não foi possível sair da conta. Tente novamente.');
+    } finally {
+      setIsSigningOut(false);
+    }
+  }
 
   return (
     <div className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-[#080610] text-neutral-100">
@@ -24,21 +40,22 @@ const FinanceApp: React.FC = () => {
           <span className="hidden text-sm font-bold text-neutral-500 sm:block">Finanças pessoais</span>
         </div>
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          <button onClick={() => setIsAssistantOpen(true)} className="group flex h-10 w-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-xs font-black text-white shadow-sm hover:from-indigo-500 hover:to-violet-500 sm:w-auto sm:px-4" aria-label="Abrir Fluxo IA">
+          <button onClick={() => setIsAssistantOpen(true)} disabled={!isFinanceHydrated || isSigningOut} className="group flex h-10 w-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-xs font-black text-white shadow-sm hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 sm:w-auto sm:px-4" aria-label="Abrir Fluxo IA">
             <Sparkles className="h-4 w-4 transition-transform group-hover:rotate-12" />
             <span className="hidden sm:inline">Fluxo IA</span>
           </button>
-          <button onClick={() => openTransactionModal('expense')} className="flex h-10 w-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-500 sm:w-auto sm:px-4" aria-label="Novo lançamento">
+          <button onClick={() => openTransactionModal('expense')} disabled={!isFinanceHydrated || isSigningOut} className="flex h-10 w-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:px-4" aria-label="Novo lançamento">
             <Plus className="h-4 w-4" /><span className="hidden sm:inline">Novo lançamento</span>
           </button>
           <button onClick={() => forceFinanceDbSync()} disabled={isFinanceDbSaving || !isFinanceHydrated} title={isFinanceDbConnected ? `Sincronizado${lastFinanceDbSyncedAt ? ` às ${lastFinanceDbSyncedAt}` : ''}` : 'Dados não sincronizados'} className={`rounded-xl p-2 disabled:opacity-50 ${isFinanceDbConnected ? 'text-emerald-600' : 'text-amber-600'}`} aria-label="Sincronizar dados financeiros">
             {isFinanceDbSaving ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Database className="h-5 w-5" />}
           </button>
-          <button onClick={() => signOut()} className="rounded-xl p-2 text-neutral-500 hover:bg-neutral-100 hover:text-rose-600 dark:hover:bg-neutral-800" aria-label={`Sair da conta ${user?.email || ''}`}>
+          <button onClick={() => void leave()} disabled={isSigningOut} className="rounded-xl p-2 text-neutral-500 hover:bg-neutral-100 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-neutral-800" aria-label={`Sair da conta ${user?.email || ''}`}>
             <LogOut className="h-5 w-5" />
           </button>
         </div>
       </header>
+      {signOutError && <p role="alert" className="shrink-0 bg-rose-950 px-4 py-2 text-center text-xs text-rose-200">{signOutError}</p>}
 
       {!isFinanceHydrated ? (
         <main className="grid min-h-0 flex-1 place-items-center p-6">
@@ -50,7 +67,7 @@ const FinanceApp: React.FC = () => {
           </div>
         </main>
       ) : (
-        <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" inert={isSigningOut}>
           {(!isFinanceDbConnected || isFinanceOffline) && <div role="alert" className="flex flex-wrap items-center justify-center gap-2 bg-amber-50 px-4 py-2 text-center text-xs font-semibold text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"><span>{isFinanceOffline ? 'Você está offline. As alterações ficam nesta tela até a conexão voltar.' : (lastFinanceDbError || 'Alterações pendentes de sincronização.')}</span>{!isFinanceOffline && <button onClick={() => lastFinanceDbError?.includes('outra sessão') ? window.location.reload() : forceFinanceDbSync()} disabled={isFinanceDbSaving} className="rounded-lg border border-amber-300 px-2 py-1 font-black disabled:opacity-50">{lastFinanceDbError?.includes('outra sessão') ? 'Recarregar dados' : 'Tentar novamente'}</button>}</div>}
           <FinanceView />
         </main>
@@ -64,9 +81,9 @@ const FinanceApp: React.FC = () => {
 };
 
 const AuthenticatedApp: React.FC = () => {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isRecoveringPassword } = useAuth();
   if (isLoading) return <div className="grid min-h-[100dvh] place-items-center bg-neutral-950 text-sm font-semibold text-neutral-400">Preparando seu Fluxo Financeiro...</div>;
-  if (!user) return <AuthScreen />;
+  if (!user || isRecoveringPassword) return <AuthScreen key={isRecoveringPassword ? 'recovery' : 'signin'} />;
   return <FinanceProvider key={user.id}><FinanceApp /></FinanceProvider>;
 };
 
