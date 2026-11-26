@@ -176,8 +176,9 @@ interface FinanceContextType {
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user: authUser } = useAuth();
-  const initialMonth = getTodayDateString().slice(0, 7);
+  const { user } = useAuth();
+  const userId = user?.id;
+  const [initialMonth] = useState(() => getTodayDateString().slice(0, 7));
 
   // Navigation subTab
   const [subTab, setSubTab] = useState<FinanceSubTab>('overview');
@@ -225,8 +226,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [lastFinanceDbError, setLastFinanceDbError] = useState<string | null>(null);
   const [lastFinanceDbSyncedAt, setLastFinanceDbSyncedAt] = useState<string | null>(null);
   const [isHydratedFromDb, setIsHydratedFromDb] = useState<boolean>(false);
-  const saveQueueRef = useRef<Promise<string | void>>(Promise.resolve());
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const serverRevisionRef = useRef<string | null>(null);
+  const savedPayloadRef = useRef<object | null>(null);
   const pendingSavesRef = useRef(0);
   const actionLocksRef = useRef(new Set<string>());
 
@@ -254,11 +256,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Initial load from Supabase for the authenticated user.
   useEffect(() => {
-    if (!authUser) return;
+    if (!userId || isHydratedFromDb || isFinanceOffline) return;
     let isMounted = true;
     async function loadFinanceFromDb() {
       try {
-        const data = await loadFinanceData(authUser.id);
+        const data = await loadFinanceData(userId!);
         if (data && isMounted) {
           setAccounts(data.accounts as FinanceAccount[]);
           setCreditCards(data.creditCards as CreditCard[]);
@@ -270,9 +272,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           setGoals(data.goals as FinancialGoalItem[]);
           setInvestments(data.investments as InvestmentAssetItem[]);
           const loadedBudgets = (data.budgets || (data.budget ? [data.budget] : [])) as ZeroBasedBudget[];
-          const activeBudget = loadedBudgets.find((item) => item.month === initialMonth) || data.budget;
-          if (activeBudget && Object.keys(activeBudget).length) setBudget(activeBudget as ZeroBasedBudget);
-          setMonthlyBudgets(loadedBudgets);
+          const monthlyState = ensureBudgetForMonth(loadedBudgets, loadedBudgets[0] || INITIAL_ZERO_BASED_BUDGET, initialMonth);
+          setBudget(monthlyState.budget);
+          setMonthlyBudgets(monthlyState.budgets);
           setMonthlyClosingHistory(data.closings as MonthlyClosing[]);
           if (data.diagnosis && Object.keys(data.diagnosis).length) setDiagnosis(data.diagnosis as FinancialDiagnosisData);
 
@@ -294,7 +296,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => {
       isMounted = false;
     };
-  }, [authUser]);
+  }, [userId, initialMonth, isHydratedFromDb, isFinanceOffline]);
 
   // Payload for server database sync
   const financeDbPayload = useMemo(() => ({
@@ -313,51 +315,26 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     diagnosis,
   }), [accounts, creditCards, transactions, bills, debts, installments, emergencyFund, goals, investments, budget, monthlyBudgets, monthlyClosingHistory, diagnosis]);
 
-  // Auto-sync debounced to Supabase.
-  useEffect(() => {
-    if (!isHydratedFromDb || !authUser) return;
-
-    const timer = setTimeout(() => {
-      pendingSavesRef.current += 1;
-      setIsFinanceDbSaving(true);
-      saveQueueRef.current = saveQueueRef.current
-        .catch(() => undefined)
-        .then(() => saveFinanceData(authUser.id, financeDbPayload, serverRevisionRef.current))
-        .then((revision) => {
-          if (revision) serverRevisionRef.current = revision;
-          setIsFinanceDbConnected(true);
-          setLastFinanceDbError(null);
-          setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
-        })
-        .catch((error) => {
-          console.error('Could not save finance data to Supabase:', error);
-          setIsFinanceDbConnected(false);
-          setLastFinanceDbError(error instanceof FinanceConflictError ? error.message : 'Existem alterações aguardando sincronização.');
-        })
-        .finally(() => {
-          pendingSavesRef.current -= 1;
-          if (pendingSavesRef.current === 0) setIsFinanceDbSaving(false);
-        });
-    }, 600);
-
-    return () => clearTimeout(timer);
-  }, [authUser, financeDbPayload, isHydratedFromDb]);
-
   const forceFinanceDbSync = useCallback(async (): Promise<boolean> => {
-    if (!authUser || !isHydratedFromDb) return false;
+    if (!userId || !isHydratedFromDb) return false;
+    if (!pendingSavesRef.current && savedPayloadRef.current === financeDbPayload) return true;
+    if (isFinanceOffline) return false;
     pendingSavesRef.current += 1;
     setIsFinanceDbSaving(true);
     const queuedSave = saveQueueRef.current
       .catch(() => undefined)
-      .then(() => saveFinanceData(authUser.id, financeDbPayload, serverRevisionRef.current));
+      .then(async () => {
+        if (savedPayloadRef.current === financeDbPayload) return;
+        serverRevisionRef.current = await saveFinanceData(userId, financeDbPayload, serverRevisionRef.current);
+        savedPayloadRef.current = financeDbPayload;
+        setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
+      });
     saveQueueRef.current = queuedSave;
 
     try {
-      const revision = await queuedSave;
-      if (revision) serverRevisionRef.current = revision;
+      await queuedSave;
       setIsFinanceDbConnected(true);
       setLastFinanceDbError(null);
-      setLastFinanceDbSyncedAt(new Date().toLocaleTimeString('pt-BR'));
       return true;
     } catch (error) {
       console.error('Could not force finance data sync to Supabase:', error);
@@ -368,10 +345,29 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       pendingSavesRef.current -= 1;
       if (pendingSavesRef.current === 0) setIsFinanceDbSaving(false);
     }
-  }, [authUser, financeDbPayload, isHydratedFromDb]);
+  }, [userId, financeDbPayload, isHydratedFromDb, isFinanceOffline]);
+
+  useEffect(() => {
+    if (!isHydratedFromDb) return;
+    if (!savedPayloadRef.current) savedPayloadRef.current = financeDbPayload;
+    if (savedPayloadRef.current === financeDbPayload || isFinanceOffline) return;
+    const timer = setTimeout(() => void forceFinanceDbSync(), 600);
+    return () => clearTimeout(timer);
+  }, [financeDbPayload, forceFinanceDbSync, isHydratedFromDb, isFinanceOffline]);
+
+  useEffect(() => {
+    if (!isHydratedFromDb) return;
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      if (savedPayloadRef.current === financeDbPayload) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnUnsaved);
+    return () => window.removeEventListener('beforeunload', warnUnsaved);
+  }, [financeDbPayload, isHydratedFromDb]);
 
   const setSelectedMonth = useCallback((month: string) => {
-    if (!/^\d{4}-\d{2}$/.test(month)) return;
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
     const monthlyState = ensureBudgetForMonth(monthlyBudgets, budget, month);
     setSelectedMonthState(month);
     setBudget(monthlyState.budget);
@@ -393,10 +389,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setTransactionModalInitialCategory(category);
     setTransactionModalBudgetCategoryId(options?.budgetCategoryId);
     setTransactionModalBudgetCategoryName(options?.budgetCategoryName);
-    const today = getTodayDateString();
-    setTransactionModalInitialDate(options?.date || (today.startsWith(selectedMonth) ? today : `${selectedMonth}-01`));
+    setTransactionModalInitialDate(options?.date || dateForSelectedMonth());
     setIsTransactionModalOpen(true);
-  }, [selectedMonth]);
+  }, [dateForSelectedMonth]);
 
   const closeTransactionModal = useCallback(() => {
     setIsTransactionModalOpen(false);
@@ -596,9 +591,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addTransaction = useCallback(
     (txData: Omit<FinanceTransaction, 'id'>): FinanceTransaction => {
-      if (!isPositiveMoney(txData.amount)) throw new Error('O valor da transação deve ser maior que zero.');
+      const amount = money(txData.amount);
+      if (!isPositiveMoney(amount)) throw new Error('O valor da transação deve ser maior que zero.');
       const newId = crypto.randomUUID();
-      const newTx: FinanceTransaction = { ...txData, amount: money(txData.amount), id: newId };
+      const newTx: FinanceTransaction = { ...txData, amount, id: newId };
 
       setTransactions((prev) => [newTx, ...prev]);
       applyTransactionImpact(newTx, 1);

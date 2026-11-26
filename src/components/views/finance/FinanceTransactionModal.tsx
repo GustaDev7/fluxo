@@ -51,6 +51,7 @@ export const FinanceTransactionModal: React.FC = () => {
 
   // Quick Smart Input text
   const [smartInput, setSmartInput] = useState('');
+  const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     if (isTransactionModalOpen) {
@@ -74,6 +75,7 @@ export const FinanceTransactionModal: React.FC = () => {
       setRecurrence('none');
       setIsInstallment(false);
       setSmartInput('');
+      setSubmitError('');
     }
   }, [isTransactionModalOpen, transactionModalInitialType, transactionModalInitialCategory, transactionModalInitialDate, accounts]);
 
@@ -91,8 +93,18 @@ export const FinanceTransactionModal: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const numAmount = parseFloat(amount.replace(',', '.'));
-    if (!numAmount || numAmount <= 0) return;
+    const rawAmount = amount.trim();
+    const decimalAmount = rawAmount.includes(',') ? rawAmount.replace(/\.(?=\d{3}(?:[.,]|$))/g, '').replace(',', '.') : rawAmount;
+    const numAmount = Number(decimalAmount);
+    if (!/^\d+(\.\d{1,2})?$/.test(decimalAmount) || !Number.isFinite(numAmount) || numAmount < 0.01) {
+      setSubmitError('Informe um valor válido com até duas casas decimais.');
+      return;
+    }
+    if (type === 'transfer' && (!accountId || !destinationAccountId || accountId === destinationAccountId)) {
+      setSubmitError('Selecione duas contas diferentes para transferir.');
+      return;
+    }
+    const paymentCard = type === 'expense' ? cardId : '';
 
     addTransaction({
       type,
@@ -101,15 +113,15 @@ export const FinanceTransactionModal: React.FC = () => {
       description: description.trim() || 'Sem descrição',
       masterCategory,
       subcategory: subcategory.trim() || undefined,
-      accountId: cardId ? undefined : accountId || undefined,
+      accountId: paymentCard ? undefined : accountId || undefined,
       destinationAccountId: type === 'transfer' ? destinationAccountId : undefined,
-      cardId: cardId || undefined,
+      cardId: paymentCard || undefined,
       goalId: goalId || undefined,
       recurrence: recurrence !== 'none' ? recurrence : undefined,
       tags: transactionModalBudgetCategoryId ? [budgetCategoryTag(transactionModalBudgetCategoryId)] : undefined,
       notes: notes.trim() || undefined,
       installments:
-        isInstallment && cardId
+        isInstallment && paymentCard
           ? {
               current: 1,
               total: totalInstallments,
@@ -304,7 +316,7 @@ export const FinanceTransactionModal: React.FC = () => {
                 {type === 'transfer' ? 'Conta de Origem' : 'Conta de Movimentação'}
               </label>
               <select
-                disabled={Boolean(cardId)}
+                disabled={type === 'expense' && Boolean(cardId)}
                 value={accountId}
                 onChange={(e) => setAccountId(e.target.value)}
                 className="w-full rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 text-xs text-neutral-900 outline-none focus:border-indigo-500 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-100 disabled:opacity-50"
@@ -334,7 +346,7 @@ export const FinanceTransactionModal: React.FC = () => {
                   ))}
                 </select>
               </div>
-            ) : (
+            ) : type === 'expense' && (
               <div>
                 <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 block mb-1">
                   Ou Pagar com Cartão de Crédito
@@ -446,6 +458,7 @@ export const FinanceTransactionModal: React.FC = () => {
           </div>
 
           {/* Submit Button */}
+          {submitError && <p role="alert" className="text-sm font-medium text-rose-500">{submitError}</p>}
           <div className="pt-2">
             <button
               type="submit"
