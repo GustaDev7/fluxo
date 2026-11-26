@@ -79,7 +79,82 @@ async function readTransactions(account: Account, apiKey: string, since: string)
   });
 }
 
+const fluxoPreviewOrigin = 'https://fluxo-git-feat-fluxo-casal-open-finance-gustadev7s-projects.vercel.app';
+const fluxoEdgeUrl = 'https://kwhbkkvoahxztzzscdnm.supabase.co/functions/v1/open-finance';
+const belvoClientId = fluxoEdgeUrl + '/belvo-client.json';
+const belvoResource = 'https://panorama-mcp.belvo.com/mcp';
+
+async function verifyBelvo(code: string, verifier: string) {
+  const response = await fetch('https://auth.panorama.belvo.com/oauth2/token', {
+    method: 'POST', redirect: 'error', signal: AbortSignal.timeout(12000),
+    body: new URLSearchParams({
+      grant_type: 'authorization_code', client_id: belvoClientId, code, code_verifier: verifier,
+      redirect_uri: fluxoPreviewOrigin + '/?belvo=1', resource: belvoResource,
+    }),
+  });
+  if (!response.ok) throw new RequestError(502, 'O Belvo não concluiu a autorização. Tente conectar novamente.');
+  const { access_token: token } = await response.json();
+  if (typeof token !== 'string' || !token) throw new RequestError(502, 'O Belvo não retornou acesso ao conector.');
+  const headers = new Headers({
+    Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
+  });
+  const post = (body: unknown) => fetch(belvoResource, {
+    method: 'POST', headers, body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(12000),
+  });
+  async function result(reply: Response, id: number) {
+    if (!reply.ok) throw new RequestError(502, 'O Belvo autorizou o acesso, mas o servidor MCP não respondeu à validação.');
+    let data;
+    if (reply.headers.get('content-type')?.includes('text/event-stream')) {
+      const reader = reply.body?.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      try {
+        while (reader) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          buffer += chunk.value.replace(/\r\n/g, '\n');
+          if (buffer.length > 1048576) break;
+          let boundary;
+          while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+            const event = buffer.slice(0, boundary).split('\n').filter(line => line.startsWith('data:'))
+              .map(line => line.slice(5).trimStart()).join('\n');
+            buffer = buffer.slice(boundary + 2);
+            if (event) {
+              const message = JSON.parse(event);
+              if (message.id === id) { data = message; break; }
+            }
+          }
+          if (data) break;
+        }
+      } finally { void reader?.cancel().catch(() => undefined); }
+    } else data = await reply.json();
+    if (data?.id !== id || !data.result) throw new RequestError(502, 'O Belvo não retornou uma resposta MCP válida.');
+    return data.result;
+  }
+  const initialize = await post({
+    jsonrpc: '2.0', id: 1, method: 'initialize',
+    params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'Fluxo Casal', version: '1.0.0' } },
+  });
+  const config = await result(initialize, 1);
+  const session = initialize.headers.get('mcp-session-id');
+  if (session) headers.set('MCP-Session-Id', session);
+  if (typeof config.protocolVersion !== 'string') throw new RequestError(502, 'O Belvo não informou a versão do protocolo MCP.');
+  headers.set('MCP-Protocol-Version', config.protocolVersion);
+  const ready = await post({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  if (!ready.ok) throw new RequestError(502, 'Não foi possível iniciar a sessão com o Belvo.');
+  const tools = await result(await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' }), 2);
+  const count = Array.isArray(tools.tools) ? tools.tools.length : 0;
+  if (!count) throw new RequestError(502, 'Nenhuma ferramenta MCP disponível para este login.');
+  return { verified: true };
+}
+
 Deno.serve(async request => {
+  if (request.method === 'GET' && new URL(request.url).pathname.endsWith('/open-finance/belvo-client.json')) {
+    return Response.json({
+      client_id: belvoClientId, client_name: 'Fluxo Casal',
+      redirect_uris: [fluxoPreviewOrigin + '/?belvo=1'], grant_types: ['authorization_code'],
+      response_types: ['code'], token_endpoint_auth_method: 'none',
+    });
+  }
   const mode = Deno.env.get('PLUGGY_MODE') ?? 'sandbox';
   const sandbox = mode === 'sandbox';
   const personal = mode === 'meu-pluggy';
@@ -118,6 +193,14 @@ Deno.serve(async request => {
     if (authError || !user?.email_confirmed_at) throw new RequestError(401, 'Entre com uma conta de e-mail confirmado.');
     const payload = await request.json().catch(() => null);
     if (!payload || typeof payload.action !== 'string') throw new RequestError(400, 'Ação inválida.');
+    if (payload.action === 'belvo-check') {
+      if (origin && origin !== fluxoPreviewOrigin) throw new RequestError(403, 'Abra a prévia do Fluxo para verificar o Belvo.');
+      if (typeof payload.code !== 'string' || !payload.code || payload.code.length > 4096
+        || typeof payload.verifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(payload.verifier)) {
+        throw new RequestError(400, 'Retorno de autorização inválido.');
+      }
+      return json(await verifyBelvo(payload.code, payload.verifier));
+    }
     const actor = user.id;
     const credentials = personal ? personalCredentials(actor) : {
       clientId: Deno.env.get('PLUGGY_CLIENT_ID'),

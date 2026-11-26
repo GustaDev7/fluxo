@@ -178,7 +178,7 @@ export const FinanceProvider: React.FC<{ workspaceId: string; children: React.Re
   const initialMonth = getTodayDateString().slice(0, 7);
 
   // Navigation subTab
-  const [subTab, setSubTab] = useState<FinanceSubTab>('overview');
+  const [subTab, setSubTab] = useState<FinanceSubTab>(() => new URLSearchParams(window.location.search).get('belvo') === '1' ? 'banks' : 'overview');
   const [selectedMonth, setSelectedMonthState] = useState(initialMonth);
 
   // Modals state

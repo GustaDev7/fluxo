@@ -4,6 +4,7 @@ import { bankAction, importStatement, loadBankOverview, removeStatement, shareBa
 import { errorMessage, type Workspace } from '../../../lib/workspaces';
 import { useFinance } from '../../../context/FinanceContext';
 import { useAuth } from '../../../context/AuthContext';
+import { BelvoPilot } from './BelvoPilot';
 
 const PluggyConnect = lazy(() => import('react-pluggy-connect').then(module => ({ default: module.PluggyConnect })));
 const control = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-violet-900 px-3 text-sm font-bold text-violet-200 hover:bg-violet-500/15 disabled:opacity-50';
@@ -126,6 +127,7 @@ export function BankTab({ workspace, couple }: { workspace: Workspace; couple?: 
   } else if (provider) providerMessage = 'A conexão bancária aguarda a configuração do provedor.';
 
   return <section className="space-y-5">
+    {personal && user && <BelvoPilot userId={user.id} />}
     {personal ? <div className="grid gap-4 xl:grid-cols-[1.25fr_1fr]">
       <form onSubmit={handleImport} className="rounded-3xl border border-violet-950 bg-[#151021] p-5">
         <div className="flex items-start gap-3">
