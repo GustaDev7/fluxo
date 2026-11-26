@@ -1,11 +1,49 @@
 import Decimal from 'decimal.js';
-import type { FinanceTransaction } from '../types/finance';
+import type { FinanceTransaction, MonthlyClosing } from '../types/finance';
 
 export const money = (value: number): number =>
   Number(new Decimal(Number.isFinite(value) ? value : 0).toDecimalPlaces(2));
 
 export const isPositiveMoney = (value: number): boolean =>
   Number.isFinite(value) && new Decimal(value).greaterThan(0);
+
+export function parseMoneyInput(value: string): number | null {
+  const input = value.trim();
+  const brazilian = /^\d+(?:,\d{1,2})$|^\d{1,3}(?:\.\d{3})+,\d{1,2}$/.test(input);
+  const decimal = brazilian ? input.replaceAll('.', '').replace(',', '.') : input;
+  if (!/^\d+(?:\.\d{1,2})?$/.test(decimal)) return null;
+  const amount = Number(decimal);
+  return Number.isFinite(amount) && amount >= 0.01 ? amount : null;
+}
+
+export function summarizeMonthlyLedger(transactions: FinanceTransaction[], reportedIncome: number) {
+  let ledgerIncome = 0;
+  let expenses = 0;
+  let investments = 0;
+  let debtPayments = 0;
+  let saved = 0;
+  for (const transaction of transactions) {
+    const { amount, type, tags, goalId } = transaction;
+    const reserve = tags?.includes('reserva');
+    if (type === 'income' && !reserve) ledgerIncome += amount;
+    if (type === 'expense') expenses += amount;
+    if (type === 'investment') investments += amount;
+    if (type === 'debt_payment') debtPayments += amount;
+    if (reserve) saved += tags?.includes('resgate') ? -amount : amount;
+    else if (type === 'investment' || (type === 'transfer' && goalId)) saved += amount;
+  }
+  const income = money(reportedIncome > 0 ? reportedIncome : ledgerIncome);
+  return {
+    income, expenses: money(expenses), investments: money(investments), debtPayments: money(debtPayments),
+    savingsRate: income > 0 ? (money(saved) / income) * 100 : 0,
+  };
+}
+
+export function recentClosings(closings: MonthlyClosing[], throughMonth: string, limit: number) {
+  return closings.filter(({ month }) => /^\d{4}-(0[1-9]|1[0-2])$/.test(month) && month <= throughMonth)
+    .sort((first, second) => first.month.localeCompare(second.month))
+    .slice(-limit);
+}
 
 export interface TransactionImpact {
   sourceAccount: number;

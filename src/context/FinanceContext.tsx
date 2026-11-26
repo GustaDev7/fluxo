@@ -18,8 +18,8 @@ import {
   FinancialHealthScore,
 } from '../types/finance';
 import { generateSchedule } from '../domain/debtEngine';
-import { calculateBudget, copyBudgetToMonth, ensureBudgetForMonth, replaceBudgetForMonth } from '../domain/budgetEngine';
-import { calculateInvestmentContribution, getTransactionImpact, isPositiveMoney, money } from '../domain/financeLedger';
+import { calculateBudget, copyBudgetToMonth, ensureBudgetForMonth, plannedBudgetOutflow, replaceBudgetForMonth } from '../domain/budgetEngine';
+import { calculateInvestmentContribution, getTransactionImpact, isPositiveMoney, money, summarizeMonthlyLedger } from '../domain/financeLedger';
 import {
   INITIAL_ACCOUNTS,
   INITIAL_CREDIT_CARDS,
@@ -124,7 +124,7 @@ interface FinanceContextType {
   addBill: (bill: Omit<FinanceBill, 'id'>) => void;
   updateBill: (id: string, updates: Partial<FinanceBill>) => void;
   deleteBill: (id: string) => void;
-  payBill: (billId: string, accountId?: string, cardId?: string) => void;
+  payBill: (billId: string, paidOn: string) => void;
 
   addDebt: (debt: Omit<FinanceDebt, 'id'>) => void;
   updateDebt: (id: string, updates: Partial<FinanceDebt>) => void;
@@ -430,44 +430,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return transactions.filter((t) => t.date.startsWith(selectedMonth));
   }, [transactions, selectedMonth]);
 
-  const monthIncome = useMemo(() => {
-    const receivedFromBudget = budget.incomeSources?.reduce((sum, source) => sum + source.receivedAmount, 0) || 0;
-    const receivedFromLedger = currentMonthTransactions
-      .filter((t) => t.type === 'income')
-      .reduce((acc, t) => acc + t.amount, 0);
-    return receivedFromBudget > 0 ? money(receivedFromBudget) : money(receivedFromLedger);
+  const { income: monthIncome, expenses: monthExpenses, investments: monthInvestments,
+    debtPayments: monthDebtsPaid, savingsRate } = useMemo(() => {
+    const reportedIncome = budget.incomeSources?.reduce((sum, source) => sum + source.receivedAmount, 0) ?? 0;
+    return summarizeMonthlyLedger(currentMonthTransactions, reportedIncome);
   }, [currentMonthTransactions, budget.incomeSources]);
-
-  const monthExpenses = useMemo(() => {
-    return currentMonthTransactions
-      .filter((t) => t.type === 'expense')
-      .reduce((acc, t) => acc + t.amount, 0);
-  }, [currentMonthTransactions]);
-
-  const monthInvestments = useMemo(() => {
-    return currentMonthTransactions
-      .filter((t) => t.type === 'investment')
-      .reduce((acc, t) => acc + t.amount, 0);
-  }, [currentMonthTransactions]);
-
-  const monthDebtsPaid = useMemo(() => {
-    return currentMonthTransactions
-      .filter((t) => t.type === 'debt_payment')
-      .reduce((acc, t) => acc + t.amount, 0);
-  }, [currentMonthTransactions]);
-
-  // Savings rate = (metas + investments + reserve) / income
-  const savingsRate = useMemo(() => {
-    const goalsTransfers = currentMonthTransactions
-      .filter((t) => t.masterCategory === 'metas' || t.tags?.includes('reserva'))
-      .reduce((acc, t) => acc + t.amount, 0);
-
-    const totalSaved = monthInvestments + goalsTransfers;
-    const baseIncome = monthIncome > 0
-      ? monthIncome
-      : (budget.plannedIncome || diagnosis.monthlyIncome || 0);
-    return baseIncome > 0 ? (totalSaved / baseIncome) * 100 : 0;
-  }, [currentMonthTransactions, monthInvestments, monthIncome, budget.plannedIncome, diagnosis.monthlyIncome]);
 
   // Monthly fixed costs from budget, bills, or diagnosis
   const monthlyEssentialCosts = useMemo(() => {
@@ -685,7 +652,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (linkedTransaction && updates.status !== 'pending') {
       updateTransaction(linkedTransaction.id, {
         amount: updates.amount ?? currentBill.amount,
-        date: updates.dueDate ?? linkedTransaction.date,
         description: updates.title ? `Pagamento: ${updates.title}` : linkedTransaction.description,
         masterCategory: updates.masterCategory ?? currentBill.masterCategory,
         subcategory: updates.subcategory ?? currentBill.subcategory,
@@ -701,28 +667,31 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [transactions, deleteTransaction]);
 
   const payBill = useCallback(
-    (billId: string, accountId?: string, cardId?: string) => {
+    (billId: string, paidOn: string) => {
       const bill = bills.find((b) => b.id === billId);
       if (!bill || bill.status === 'paid' || transactions.some((transaction) => transaction.linkedBillId === billId)) return;
 
-      const chosenAccId = accountId || bill.accountId || accounts[0]?.id;
+      const paymentDate = new Date(paidOn + 'T00:00:00Z');
+      if (!Number.isFinite(paymentDate.getTime()) || paymentDate.toISOString().slice(0, 10) !== paidOn || paidOn > getTodayDateString()) return;
+      const cardId = bill.type === 'expense' ? bill.cardId : undefined;
+      const chosenAccId = bill.accountId || accounts[0]?.id;
 
       runOnce(`pay-bill:${billId}`, () => {
         addTransaction({
           type: bill.type === 'income' ? 'income' : 'expense',
           amount: bill.amount,
-          date: bill.dueDate.startsWith(selectedMonth) ? dateForSelectedMonth() : bill.dueDate,
+          date: paidOn,
           description: `Pagamento: ${bill.title}`,
           masterCategory: bill.masterCategory,
           subcategory: bill.subcategory,
           accountId: cardId ? undefined : chosenAccId,
-          cardId: cardId || bill.cardId,
+          cardId,
           linkedBillId: billId,
           tags: ['conta-paga'],
         });
       });
     },
-    [bills, transactions, accounts, addTransaction, runOnce, selectedMonth, dateForSelectedMonth]
+    [bills, transactions, accounts, addTransaction, runOnce]
   );
 
   // Debts
@@ -993,24 +962,28 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Monthly Closing
   const saveMonthlyClosing = useCallback(
     (rating: MonthlyClosing['rating'], notes: string) => {
-      const newClosing: MonthlyClosing = {
-        id: `closing_${Date.now()}`,
-        month: selectedMonth,
-        rating,
-        notes,
-        savingsRate,
-        totalIncome: monthIncome,
-        totalExpenses: monthExpenses,
-        totalInvested: monthInvestments,
-        debtsPaid: monthDebtsPaid,
-        netWorth: netWorthSummary.netWorth,
-        completedAt: new Date().toISOString(),
-      };
-
-      setMonthlyClosingHistory((prev) => [newClosing, ...prev.filter((closing) => closing.month !== selectedMonth)]);
-
+      const isCurrentMonth = selectedMonth === getTodayDateString().slice(0, 7);
+      const plannedOutflow = plannedBudgetOutflow(budget);
+      setMonthlyClosingHistory((previous) => {
+        const existing = previous.find((closing) => closing.month === selectedMonth);
+        const newClosing: MonthlyClosing = {
+          id: existing?.id ?? crypto.randomUUID(),
+          month: selectedMonth,
+          rating,
+          notes,
+          savingsRate,
+          totalIncome: monthIncome,
+          totalExpenses: monthExpenses,
+          totalInvested: monthInvestments,
+          debtsPaid: monthDebtsPaid,
+          plannedOutflow,
+          netWorth: isCurrentMonth ? netWorthSummary.netWorth : existing?.netWorth,
+          completedAt: new Date().toISOString(),
+        };
+        return [newClosing, ...previous.filter((closing) => closing.month !== selectedMonth)];
+      });
     },
-    [selectedMonth, savingsRate, monthIncome, monthExpenses, monthInvestments, monthDebtsPaid, netWorthSummary.netWorth]
+    [selectedMonth, savingsRate, monthIncome, monthExpenses, monthInvestments, monthDebtsPaid, netWorthSummary.netWorth, budget]
   );
 
   // Diagnosis

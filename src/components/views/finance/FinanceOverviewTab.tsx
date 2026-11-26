@@ -3,6 +3,7 @@ import { ArrowDownLeft, ArrowUpRight, CalendarClock, CircleCheck, Lightbulb, Plu
 import { useFinance } from '../../../context/FinanceContext';
 import { useAuth } from '../../../context/AuthContext';
 import { MASTER_CATEGORY_CONFIG, formatBRL } from '../../../utils/financeUtils';
+import { recentClosings } from '../../../domain/financeLedger';
 
 const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string; key?: React.Key }) => <section className={`rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm sm:p-4 dark:border-neutral-800 dark:bg-neutral-900 ${className}`}>{children}</section>;
 const Title = ({ children, action, onClick }: { children: React.ReactNode; action?: string; onClick?: () => void }) => <div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-black">{children}</h3>{action && <button onClick={onClick} className="text-[11px] font-bold text-indigo-500">{action} →</button>}</div>;
@@ -11,13 +12,12 @@ export const FinanceOverviewTab: React.FC = () => {
   const { user } = useAuth();
   const { accounts, transactions, bills, debts, goals, emergencyFund, budget, selectedMonth, isSelectedMonthClosed, availableCash, monthIncome, monthExpenses, monthInvestments, monthDebtsPaid, netWorthSummary, monthlyClosingHistory, zeroBasedStatus, overdueBills, setSubTab, openTransactionModal } = useFinance();
   const name = String(user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'usuário').split(' ')[0];
-  const receivedIncome = budget.incomeSources?.reduce((sum, source) => sum + source.receivedAmount, 0) || 0;
-  const income = monthIncome || receivedIncome || budget.plannedIncome || 0;
+  const income = monthIncome;
   const balance = income - monthExpenses - monthInvestments - monthDebtsPaid;
   const usage = income > 0 ? monthExpenses / income * 100 : 0;
   const activeDebts = debts.filter((item) => !['paid', 'cancelled'].includes(item.status));
   const month = selectedMonth;
-  const pendingBills = bills.filter((item) => item.dueDate.startsWith(selectedMonth) && item.status !== 'paid');
+  const pendingBills = bills.filter((item) => item.type !== 'income' && item.dueDate.startsWith(selectedMonth) && item.status !== 'paid');
   const pendingBillsTotal = pendingBills.reduce((sum, item) => sum + item.amount, 0);
   const freeAfterCommitments = balance - pendingBillsTotal;
   const monthLabel = new Date(`${selectedMonth}-01T00:00:00Z`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -32,20 +32,34 @@ export const FinanceOverviewTab: React.FC = () => {
           : { text: 'Mês sob controle. Continue acompanhando.', tab: 'overview' as const };
   const categories = useMemo(() => { const totals: Record<string, number> = {}; transactions.filter((item) => item.type === 'expense' && item.date.startsWith(month)).forEach((item) => { totals[item.masterCategory] = (totals[item.masterCategory] || 0) + item.amount; }); return Object.entries(totals).filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1]); }, [transactions, month]);
   const donut = useMemo(() => { if (!categories.length || monthExpenses <= 0) return 'conic-gradient(#262626 0 100%)'; let cursor = 0; return `conic-gradient(${categories.map(([key, value]) => { const start = cursor; cursor += value / monthExpenses * 100; return `${MASTER_CATEGORY_CONFIG[key as keyof typeof MASTER_CATEGORY_CONFIG]?.color || '#6366f1'} ${start}% ${cursor}%`; }).join(',')})`; }, [categories, monthExpenses]);
-  const history = useMemo(() => [...monthlyClosingHistory.slice(-11).filter((item) => item.month !== month).map((item) => ({ month: item.month, value: item.netWorth })), { month, value: netWorthSummary.netWorth }].slice(-12), [monthlyClosingHistory, month, netWorthSummary.netWorth]);
+  const history = useMemo(() => recentClosings(
+    monthlyClosingHistory.filter((item) => Number.isFinite(item.netWorth)), month, 12,
+  ).map((closing) => ({ month: closing.month, value: closing.netWorth! })), [monthlyClosingHistory, month]);
   const historyMax = Math.max(1, ...history.map((item) => Math.abs(item.value)));
 
   return <div className="space-y-4">
     <header className="flex flex-col gap-2 border-b border-neutral-200 pb-4 dark:border-neutral-800 sm:flex-row sm:items-end sm:justify-between sm:pb-5"><div><span className="text-xs text-neutral-500">Olá,</span><h1 className="text-xl font-black sm:text-2xl">{name}</h1><p className="mt-1 text-sm text-neutral-500">Aqui está o panorama completo da sua vida financeira.</p></div><span className="flex items-center gap-2 text-xs capitalize text-neutral-500">{monthLabel}<i className={`h-2 w-2 rounded-full ${isSelectedMonthClosed ? 'bg-emerald-500' : 'bg-amber-500'}`} /></span></header>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[
-      ['Saldo disponível', availableCash, `${accounts.filter((item) => item.isActive).length} fontes de saldo`, Wallet, 'text-emerald-500 bg-emerald-500/10'],
-      ['Receitas do mês', income, `Previsto: ${formatBRL(budget.plannedIncome)}`, ArrowDownLeft, 'text-emerald-500 bg-emerald-500/10'],
+      ['Saldo disponível hoje', availableCash, `${accounts.filter((item) => item.isActive).length} fontes de saldo`, Wallet, 'text-emerald-500 bg-emerald-500/10'],
+      ['Receitas recebidas', income, `Previsto: ${formatBRL(budget.plannedIncome)}`, ArrowDownLeft, 'text-emerald-500 bg-emerald-500/10'],
       ['Despesas do mês', monthExpenses, `${usage.toFixed(1).replace('.', ',')}% da renda`, ArrowUpRight, 'text-rose-500 bg-rose-500/10'],
       ['Saldo do mês', balance, income > 0 ? `${(balance / income * 100).toFixed(1).replace('.', ',')}% da renda` : 'Sem renda registrada', TrendingUp, balance >= 0 ? 'text-indigo-500 bg-indigo-500/10' : 'text-rose-500 bg-rose-500/10'],
     ].map(([label, value, detail, Icon, color]) => { const MetricIcon = Icon as typeof Wallet; return <Card key={String(label)}><div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3"><span className={`rounded-xl p-2.5 sm:p-3 ${color}`}><MetricIcon className="h-4 w-4 sm:h-5 sm:w-5"/></span><div className="min-w-0 w-full"><span className="block truncate text-[11px] text-neutral-500 sm:text-xs">{String(label)}</span><b className={`mt-0.5 block truncate text-lg sm:mt-1 sm:text-xl ${label === 'Saldo do mês' && Number(value) >= 0 ? 'text-emerald-500' : ''}`}>{formatBRL(Number(value))}</b><span className="line-clamp-2 block min-h-7 text-[10px] leading-3.5 text-neutral-500 sm:text-[11px]">{String(detail)}</span></div></div></Card>; })}</div>
     <Card className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white dark:border-indigo-500/30"><div className="grid gap-4 sm:grid-cols-3"><div><span className="text-xs text-indigo-100">Livre após compromissos</span><b className="mt-1 block text-2xl">{formatBRL(freeAfterCommitments)}</b><small className="text-indigo-100">Saldo mensal menos contas pendentes.</small></div><div><span className="text-xs text-indigo-100">Ainda falta pagar</span><b className="mt-1 block text-2xl">{formatBRL(pendingBillsTotal)}</b><small className="text-indigo-100">{pendingBills.length} {pendingBills.length === 1 ? 'compromisso no período' : 'compromissos no período'}.</small></div><button onClick={() => setSubTab(priority.tab)} className="flex items-start gap-3 rounded-2xl bg-white/10 p-3 text-left hover:bg-white/15"><Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-300"/><span><b className="block text-xs uppercase tracking-wide text-indigo-100">Próxima ação</b><span className="mt-1 block text-sm font-bold">{priority.text}</span></span></button></div></Card>
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(280px,1fr)]">
-      <Card><div className="flex items-start justify-between"><div><h3 className="text-sm font-black">Evolução do patrimônio</h3><p className="text-xs text-neutral-500">Com base nos fechamentos mensais registrados.</p></div><b className="text-sm text-indigo-500">{formatBRL(netWorthSummary.netWorth)}</b></div><div className="mt-5 flex h-48 items-end gap-2 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800">{history.map((item) => <div key={item.month} className="flex h-full min-w-12 flex-1 flex-col items-center justify-end"><div className="w-full max-w-12 rounded-t bg-gradient-to-t from-indigo-600/30 to-indigo-500" style={{ height: `${Math.max(4, Math.abs(item.value) / historyMax * 90)}%` }} title={formatBRL(item.value)}/><span className="py-2 text-[10px] capitalize text-neutral-500">{new Date(`${item.month}-01T00:00:00Z`).toLocaleDateString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', '')}</span></div>)}</div></Card>
+      <Card>
+        <div className="flex items-start justify-between gap-2">
+          <div><h3 className="text-sm font-black">Evolução do patrimônio</h3><p className="text-xs text-neutral-500">Patrimônio registrado em cada fechamento.</p></div>
+          <div className="text-right"><span className="block text-[10px] text-neutral-500">Atual</span><b className="text-sm text-indigo-500">{formatBRL(netWorthSummary.netWorth)}</b></div>
+        </div>
+        {history.length > 0 ? <div className="mt-5 flex h-48 items-end gap-2 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800">
+          {history.map((item) => <div key={item.month} className="flex h-full min-w-12 flex-1 flex-col items-center justify-end">
+            <div className={`w-full max-w-12 rounded-t ${item.value < 0 ? 'bg-rose-500' : 'bg-indigo-500'}`}
+              style={{ height: `${Math.max(4, Math.abs(item.value) / historyMax * 90)}%` }} title={formatBRL(item.value)} />
+            <span className="py-2 text-[10px] capitalize text-neutral-500">{new Date(`${item.month}-01T00:00:00Z`).toLocaleDateString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', '')}</span>
+          </div>)}
+        </div> : <div className="mt-4"><Empty text="Sem patrimônio registrado até este mês." /></div>}
+      </Card>
       <Card><Title action="Ver detalhes" onClick={() => setSubTab('budget')}>Distribuição das despesas</Title>{categories.length ? <div className="flex items-center gap-5"><div className="relative h-36 w-36 shrink-0 rounded-full" style={{ background: donut }}><div className="absolute inset-6 grid place-items-center rounded-full bg-white text-center dark:bg-neutral-900"><span><b className="block text-sm">{formatBRL(monthExpenses)}</b><small className="text-[10px] text-neutral-500">no mês</small></span></div></div><div className="min-w-0 flex-1 space-y-2">{categories.map(([key, value]) => <div key={key} className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[11px]"><span className="h-2 w-2 rounded-full" style={{ background: MASTER_CATEGORY_CONFIG[key as keyof typeof MASTER_CATEGORY_CONFIG]?.color }}/><span className="truncate text-neutral-500">{MASTER_CATEGORY_CONFIG[key as keyof typeof MASTER_CATEGORY_CONFIG]?.name || key}</span><b>{(value / monthExpenses * 100).toFixed(1).replace('.', ',')}%</b></div>)}</div></div> : <Empty text="Nenhuma despesa registrada neste mês."/>}</Card>
     </div>
     <div className="grid gap-4 lg:grid-cols-2">

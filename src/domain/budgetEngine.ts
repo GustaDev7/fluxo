@@ -71,6 +71,11 @@ export function calculateBudget(budget: ZeroBasedBudget) {
   };
 }
 
+export function plannedBudgetOutflow(budget: ZeroBasedBudget): number {
+  if (budget.categories?.length) return calculateBudget(budget).totalAllocated;
+  return money(Object.values(budget.allocations).reduce((sum, amount) => sum.plus(amount), D(0)));
+}
+
 export function distributeRemainder(categories: BudgetCategory[], income: number, categoryIds: string[]) {
   const resolved = categories.map((category) => resolveCategory(category, income));
   const roots = resolved.filter((category) => !category.parentId && !category.archived);

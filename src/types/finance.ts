@@ -272,7 +272,8 @@ export interface MonthlyClosing {
   totalExpenses: number;
   totalInvested: number;
   debtsPaid: number;
-  netWorth: number;
+  plannedOutflow?: number;
+  netWorth?: number;
   completedAt: string;
 }
 
